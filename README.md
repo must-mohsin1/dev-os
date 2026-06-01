@@ -2,6 +2,10 @@
 
 **An autonomous agent org that researches, plans, and ships — one command, gated once.**
 
+<p align="center">
+  <img src="docs/media/demo.gif" alt="dev-os: one goal → research (Grok) → plan (Codex) → approve → build (devcrew) → report" width="100%">
+</p>
+
 `dev-os` is a small, shallow team of AI agents for the [Hermes](https://hermes-agent.nousresearch.com)
 platform that sits **above** [`hermes-devcrew`](https://github.com/must-mohsin1/hermes-devcrew) (the
 9-agent implementation team). You give it a goal; it researches with Grok, writes a spec, asks you to
