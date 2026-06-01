@@ -78,6 +78,38 @@ Artifacts land in `~/.dev-os-runs/<goal>/` (`brief.md`, `spec.md`, `report.md`).
 
 Each is a Hermes profile distribution with tuned skills (21 total). **Codex + Grok; never Claude or Gemini.**
 
+## Tools & capabilities
+
+Every agent runs on Hermes and inherits a shared toolset; the researcher adds the research/synthesis
+power tools. Scope:
+
+| Toolset | Scope | Emphasis |
+|---|---|---|
+| `web` | web search + fetch/read pages (`web_search`, `web_extract`) | researcher, planner |
+| `browser` | headless browser automation (JS, forms, login-gated pages) | researcher |
+| `x_search` | X/Twitter + real-time search via **Grok** | researcher |
+| `moa` | **Mixture of Agents** — multi-model synthesis | researcher, devos |
+| `context_engine` | retrieval/RAG over large context | researcher |
+| `delegation` | spawn parallel sub-agents (≤3 sub-searchers) | researcher, devos |
+| `memory` | persistent recall/store across goals (+ `agentmemory` MCP) | devos, planner |
+| `todo` | multi-step task tracking | devos |
+| `cronjob` | scheduled tasks (the nightly improvement loop) | devos |
+| `messaging` | Discord / Slack / etc. (drive + report) | devos |
+| `code_execution`, `file`, `terminal` | run code, files, shell | all |
+| `vision`, `image_gen` | image analysis + generation | all |
+| `session_search`, `clarify`, `computer_use`, `tts` | recall sessions · ask the human · macOS control · speech | all |
+
+**MCP servers:** `agentmemory` (`@agentmemory/mcp`) — persistent cross-session memory, shared by all agents.
+Add more with `hermes mcp add`.
+
+**Per agent**
+- **devos** — `memory` + `delegation` + `todo` + `moa` + `web`: recall project context, route, decide, track.
+- **devos-researcher** — `web` + `browser` + `x_search` + `delegation` + `moa` + `context_engine`: multi-source cited briefs.
+- **devos-planner** — `web` (fact-check) + `memory` (recall) on top of its planning skills.
+
+**Skills (libraries)** are listed in [The team](#the-team) table; models are Codex / Grok / OpenRouter.
+Inspect or change any agent's tools with `hermes --profile <name> tools list` / `tools enable <toolset>`.
+
 ## Safety
 One human gate at the plan (`--no-gate` removes it); destructive build steps stay gated inside devcrew;
 isolated workspaces per task; an auditable kanban event stream.
