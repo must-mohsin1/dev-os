@@ -1,68 +1,90 @@
 #!/usr/bin/env bash
-# dev-os installer — stands up the autonomous agent org (coordinator + research/planning specialists)
-# on Hermes, above the hermes-devcrew implementation team.
-#   ./install.sh                 install agents, link runners, set descriptions (idempotent, safe)
-#   ./install.sh --with-cron     also register the nightly improvement loop (needs DEVOS_IMPROVE_REPO)
+# dev-os installer — one command sets up the whole autonomous agent org.
+# Handles prerequisites (Hermes), credentials (Codex + Grok OAuth), the build-team
+# dependency (hermes-devcrew), and the 3 dev-os agents.
 #
-# Requires: hermes; OAuth for Codex (`openai-codex`) + Grok (`xai-oauth`); hermes-devcrew (dependency).
+#   curl -fsSL https://raw.githubusercontent.com/must-mohsin1/dev-os/main/install.sh | bash
+#   # or, from a clone:  ./install.sh
+#
+# Flags / env:
+#   --yes            auto-accept install prompts (Hermes, devcrew)
+#   --skip-oauth     don't run the Codex/Grok logins (set them up later)
+#   --with-cron      register the nightly improvement loop (needs DEVOS_IMPROVE_REPO)
+#   DEVOS_REPO       git URL to clone when piped (default: the public repo)
 set -euo pipefail
-SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEVOS_REPO="${DEVOS_REPO:-https://github.com/must-mohsin1/dev-os}"
+DEVCREW_REPO="${DEVCREW_REPO:-https://github.com/must-mohsin1/hermes-devcrew}"
+HERMES_INSTALL="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh"
 HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
-WITH_CRON=0; [ "${1:-}" = "--with-cron" ] && WITH_CRON=1
+YES=0; SKIP_OAUTH=0; WITH_CRON=0
+for a in "${@:-}"; do case "$a" in
+  --yes) YES=1 ;; --skip-oauth) SKIP_OAUTH=1 ;; --with-cron) WITH_CRON=1 ;;
+  -h|--help) grep '^#' "$0" | grep -v '^#!' | sed 's/^#\{1,\} \{0,1\}//'; exit 0 ;; "") ;;
+esac; done
 say(){ printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 warn(){ printf '\033[1;33m! %s\033[0m\n' "$*" >&2; }
 die(){ printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
-command -v hermes >/dev/null 2>&1 || die "Hermes not found — https://hermes-agent.nousresearch.com/docs/"
+ask(){ [ "$YES" = 1 ] && return 0; [ -e /dev/tty ] || return 1; printf '\033[1;33m? %s [y/N] \033[0m' "$1"; local r; read -r r </dev/tty || r=n; case "$r" in y|Y|yes) return 0;; *) return 1;; esac; }
+
+# 0) Prerequisite: Hermes -----------------------------------------------------------------------
+if ! command -v hermes >/dev/null 2>&1; then
+  if ask "Hermes is not installed. Install it now (NousResearch one-liner)?"; then
+    curl -fsSL "$HERMES_INSTALL" | bash || die "Hermes install failed — see https://hermes-agent.nousresearch.com/docs/"
+    export PATH="$HOME/.local/bin:$PATH"; command -v hermes >/dev/null 2>&1 || die "Hermes installed but not on PATH — open a new shell and re-run."
+  else die "Hermes required. Install: curl -fsSL $HERMES_INSTALL | bash"; fi
+fi
+say "Hermes: $(hermes --version 2>/dev/null | grep -oE '[0-9.]+' | head -1 || echo present)"
+command -v git >/dev/null 2>&1 || die "git is required."
+
+# 1) Locate the package (self-clone when piped via curl|bash) -----------------------------------
+SRC=""
+[ -n "${BASH_SOURCE:-}" ] && [ -f "${BASH_SOURCE:-}" ] && SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -z "$SRC" ] || [ ! -d "$SRC/agents" ]; then
+  TMP="$HOME/.dev-os-src"; say "Fetching $DEVOS_REPO"
+  [ -d "$TMP/.git" ] && (cd "$TMP" && git pull --ff-only -q) || git clone -q "$DEVOS_REPO" "$TMP"
+  SRC="$TMP"
+fi
+[ -d "$SRC/agents" ] || die "Could not locate agents/ under $SRC"
+
+# 2) Dependency: hermes-devcrew (the build team) ------------------------------------------------
+if command -v devcrew-run >/dev/null 2>&1; then say "build team hermes-devcrew: present"
+elif ask "hermes-devcrew (the 9-agent build team) is not installed. Install it now?"; then
+  DTMP="$HOME/.hermes-devcrew-src"; [ -d "$DTMP/.git" ] && (cd "$DTMP" && git pull --ff-only -q) || git clone -q "$DEVCREW_REPO" "$DTMP"
+  ( cd "$DTMP" && DEVCREW_SKIP_KEYS="${DEVCREW_SKIP_KEYS:-}" ./install.sh ) || warn "devcrew install hit an issue — re-run later: cd $DTMP && ./install.sh"
+else warn "Skipping devcrew — devos can research+plan but can't build until it's installed."; fi
+
+# 3) Credentials: Codex + Grok OAuth (interactive) ----------------------------------------------
 authed(){ hermes auth list 2>/dev/null | grep -qi "$1"; }
+if [ "$SKIP_OAUTH" != 1 ]; then
+  authed openai-codex && say "Codex: authed" || { say "Codex login (main model) — opens your browser"; hermes auth add openai-codex --type oauth || warn "Codex login skipped — run later: hermes auth add openai-codex --type oauth"; }
+  authed xai && say "Grok: authed" || { say "Grok login (web search) — opens your browser"; hermes auth add xai-oauth --type oauth || warn "Grok login skipped — run later: hermes auth add xai-oauth --type oauth"; }
+else warn "Skipping OAuth — set up later: hermes auth add openai-codex --type oauth ; hermes auth add xai-oauth --type oauth"; fi
 
-# 1) dependency: hermes-devcrew (implementation team) -------------------------------------------
-if command -v devcrew-run >/dev/null 2>&1; then say "dependency hermes-devcrew: present"
-else warn "hermes-devcrew not found — install it so devos can dispatch builds:
-    git clone https://github.com/must-mohsin1/hermes-devcrew && cd hermes-devcrew && ./install.sh"; fi
-
-# 2) credentials (OAuth) — skip if already authed ----------------------------------------------
-authed "openai-codex" && say "Codex: authed" || warn "Codex not authed → run: hermes auth add openai-codex --type oauth"
-authed "xai"          && say "Grok:  authed" || warn "Grok not authed  → run: hermes auth add xai-oauth --type oauth"
-
-# 3) install the 3 agent profiles ---------------------------------------------------------------
+# 4) Install the 3 agents -----------------------------------------------------------------------
 for d in "$SRC"/agents/*/; do
   [ -f "$d/distribution.yaml" ] || continue
   name=$(grep -E '^name:' "$d/distribution.yaml" | head -1 | sed 's/^name:[[:space:]]*//' | tr -d '"'"'"' ')
   hermes profile install "$d" --force --yes >/dev/null 2>&1 && say "installed $name" || warn "install failed: $name"
 done
 
-# 4) orchestrator descriptions + Grok + fallback key -------------------------------------------
+# 5) Wire: descriptions, Grok tool, fallback key, runners ---------------------------------------
 hermes profile describe devos --text "Dev OS coordinator: routes goals to researcher/planner/devcrew, gates at the plan, tracks the board." >/dev/null 2>&1 || true
 hermes profile describe devos-researcher --text "Research specialist: Grok web research with parallel sub-searchers; cited briefs." >/dev/null 2>&1 || true
 hermes profile describe devos-planner --text "Planning specialist: goal+brief -> approval-ready specs with checkable acceptance criteria." >/dev/null 2>&1 || true
-hermes --profile devos-researcher tools enable x_search >/dev/null 2>&1 && say "Grok x_search enabled on researcher" || true
-if [ -f "$HOME_DIR/.env" ]; then
-  while IFS= read -r line; do case "$line" in OPENROUTER*) v="${line%%=*}"; for p in devos devos-researcher devos-planner; do pe="$HOME_DIR/profiles/$p/.env"; [ -d "${pe%/*}" ] && { touch "$pe"; grep -q "^$v=" "$pe" 2>/dev/null || printf '%s\n' "$line" >> "$pe"; }; done;; esac; done < "$HOME_DIR/.env"
-fi
-
-# 5) link the runners ---------------------------------------------------------------------------
+hermes --profile devos-researcher tools enable x_search >/dev/null 2>&1 || true
+[ -f "$HOME_DIR/.env" ] && while IFS= read -r line; do case "$line" in OPENROUTER*) v="${line%%=*}"; for p in devos devos-researcher devos-planner; do pe="$HOME_DIR/profiles/$p/.env"; [ -d "${pe%/*}" ] && { touch "$pe"; grep -q "^$v=" "$pe" 2>/dev/null || printf '%s\n' "$line" >> "$pe"; }; done;; esac; done < "$HOME_DIR/.env" || true
 chmod +x "$SRC/devos-run" "$SRC/devos-improve" 2>/dev/null || true
-if [ -d "$HOME/.local/bin" ]; then
-  ln -sf "$SRC/devos-run" "$HOME/.local/bin/devos-run"
-  ln -sf "$SRC/devos-improve" "$HOME/.local/bin/devos-improve"
-  say "linked devos-run + devos-improve -> ~/.local/bin"
-fi
+[ -d "$HOME/.local/bin" ] && { ln -sf "$SRC/devos-run" "$HOME/.local/bin/devos-run"; ln -sf "$SRC/devos-improve" "$HOME/.local/bin/devos-improve"; say "linked devos-run + devos-improve"; }
 
-# 6) optional improvement cron ------------------------------------------------------------------
-if [ "$WITH_CRON" = 1 ]; then
-  if [ -n "${DEVOS_IMPROVE_REPO:-}" ]; then
-    hermes --profile devos cron add "0 3 * * *" "devos-improve $DEVOS_IMPROVE_REPO" >/dev/null 2>&1 \
-      && say "nightly improvement loop set for $DEVOS_IMPROVE_REPO" || warn "could not register cron"
-  else warn "set DEVOS_IMPROVE_REPO=/path/to/repo and re-run with --with-cron"; fi
+# 6) Optional nightly improvement loop ----------------------------------------------------------
+if [ "$WITH_CRON" = 1 ] && [ -n "${DEVOS_IMPROVE_REPO:-}" ]; then
+  hermes --profile devos cron add "0 3 * * *" "devos-improve $DEVOS_IMPROVE_REPO" >/dev/null 2>&1 && say "nightly improvement loop set for $DEVOS_IMPROVE_REPO" || warn "cron registration failed"
 fi
 
 cat <<DONE
 
-✅ dev-os installed.  Agents: devos · devos-researcher · devos-planner   (devcrew = build dependency)
-
-Run the pipeline:
-  devos-run "Add OAuth login with tests" /path/to/repo      # research -> plan -> [approve] -> build -> report
-  devos-run --no-gate "..." /repo                           # fully autonomous
-  devos-improve /path/to/repo                               # propose the top improvement (no build)
-  hermes gateway start                                      # drive devos from Discord
+✅ dev-os ready.  Agents: devos · devos-researcher · devos-planner   (build team: hermes-devcrew)
+   Run:  devos-run "Add OAuth login with tests" /path/to/repo
+         devos-improve /path/to/repo
+         hermes gateway start          # drive devos from Discord
 DONE
