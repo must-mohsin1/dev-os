@@ -1,0 +1,31 @@
+# dev-os — team manifest
+# A shallow autonomous agent org: a coordinator + two specialists, sitting above the
+# hermes-devcrew implementation team. Installer derives from agents/*/distribution.yaml.
+name: dev-os
+version: 0.1.0
+description: Autonomous agent org — coordinator + research/planning specialists over the devcrew implementation team.
+license: MIT
+
+depends_on:
+  - hermes-devcrew        # implementation team, invoked via `devcrew-run "<spec>" <repo>`
+
+# Tier 1 coordinator + Tier 2 specialists. devcrew (9 agents) is the implementation dependency.
+agents:
+  - { name: devos,            dir: agents/devos,      tier: coordinator, provider: openai-codex, model: gpt-5.3-codex }
+  - { name: devos-researcher, dir: agents/researcher, tier: specialist,  provider: xai-oauth,    model: grok-4.20-reasoning }
+  - { name: devos-planner,    dir: agents/planner,    tier: specialist,  provider: openai-codex, model: gpt-5.3-codex }
+
+# Control flow — gated exactly once, at the plan.
+flow:
+  pipeline: "research -> plan -> [human approve] -> build -> report"
+  gate: approve-plan                              # human approves the spec on Discord before build
+  build_via: 'devcrew-run "<spec>" <repo>'        # hermes-devcrew dependency
+  improvement: cron                               # re-run research+plan on "improve project X"
+
+models:
+  researcher: { quick: grok-4.20-reasoning, deep: grok-4.3, sub_agents: 3 }
+  fallback: [openai/gpt-5.5, deepseek/deepseek-v4-pro]   # OpenRouter, if Codex/Grok unavailable
+  disallowed: [Claude, Gemini]
+
+board: devcrew     # shared kanban board (cross-profile)
+comms: discord

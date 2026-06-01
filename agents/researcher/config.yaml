@@ -1,0 +1,12 @@
+# dev-os :: researcher  (partial config; Hermes deep-merges over defaults)
+model:
+  provider: xai-oauth
+  default: grok-4.20-reasoning
+  api_mode: chat_completions
+toolsets:
+  - hermes-cli
+agent:
+  reasoning_effort: grok-4.20-reasoning
+  max_turns: 90
+x_search:
+  model: grok-4.20-reasoning

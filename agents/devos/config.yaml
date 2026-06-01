@@ -1,0 +1,10 @@
+# dev-os :: devos  (partial config; Hermes deep-merges over defaults)
+model:
+  provider: openai-codex
+  default: gpt-5.3-codex
+  api_mode: chat_completions
+toolsets:
+  - hermes-cli
+agent:
+  reasoning_effort: gpt-5.3-codex
+  max_turns: 90

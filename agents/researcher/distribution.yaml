@@ -1,0 +1,16 @@
+# dev-os :: researcher
+# A Hermes profile distribution. Install with:  hermes profile install ./agents/researcher --yes
+name: devos-researcher
+version: 0.1.0
+description: "medium|Research specialist — Grok-powered quick/deep web research with parallel sub-searchers; produces cited briefs."
+hermes_requires: ">=0.12.0"
+author: "dev-os"
+license: "MIT"
+env_requires:
+  - name: OPENROUTER_API_KEY
+    description: "OpenRouter API key — fallback inference (primary is OAuth: Codex / xAI-Grok)"
+    required: false
+distribution_owned:
+  - SOUL.md
+  - config.yaml
+  - skills
