@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# devos-run — drive the full Dev OS pipeline for a goal:
+#   research (Grok) -> plan (Codex) -> [HUMAN GATE] -> build (devcrew) -> report
+#
+# Usage:
+#   devos-run "Add CSV export to the API" /path/to/repo
+#   devos-run --deep "Scope a billing redesign" /path/to/repo   # deep Grok research
+#   devos-run --no-gate "..." /repo                             # autonomous (skip plan approval)
+#   devos-run --dry-build "..." /repo                           # stop before devcrew (print build cmd)
+#
+# Artifacts: ~/.dev-os-runs/<slug>/{brief.md,spec.md,report.md}
+set -euo pipefail
+DEEP=0; NO_GATE=0; DRY_BUILD=0; POS=()
+while [ $# -gt 0 ]; do case "$1" in
+  --deep) DEEP=1 ;; --no-gate) NO_GATE=1 ;; --dry-build) DRY_BUILD=1 ;;
+  -h|--help) grep '^#' "$0" | grep -v '^#!' | sed 's/^#\{1,\} \{0,1\}//'; exit 0 ;;
+  -*) echo "unknown option: $1" >&2; exit 2 ;; *) POS+=("$1") ;;
+esac; shift; done
+GOAL="${POS[0]:-}"; REPO="${POS[1]:-}"
+[ -n "$GOAL" ] || { echo 'usage: devos-run "<goal>" <repo> [--deep|--no-gate|--dry-build]'; exit 2; }
+command -v hermes >/dev/null 2>&1 || { echo "hermes not found" >&2; exit 1; }
+DEEP_LABEL=""; [ "$DEEP" = 1 ] && DEEP_LABEL=", deep"
+
+say(){ printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
+slug=$(printf '%s' "$GOAL" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-40)
+RUN="$HOME/.dev-os-runs/${slug:-goal}"; mkdir -p "$RUN"
+BOARD="${DEVCREW_BOARD:-devcrew}"
+hermes kanban init >/dev/null 2>&1 || true
+hermes kanban boards create "$BOARD" >/dev/null 2>&1 || true
+TRACK=$(hermes kanban --board "$BOARD" create "goal: $GOAL" --assignee devos 2>/dev/null | grep -oE 't_[a-z0-9]+' | head -1 || true)
+note(){ [ -n "$TRACK" ] && hermes kanban --board "$BOARD" comment "$TRACK" "$1" >/dev/null 2>&1 || true; }
+
+# 1) RESEARCH (devos-researcher / Grok) -----------------------------------------------------------
+say "1/5 research (Grok$DEEP_LABEL)"
+note "research started"
+DEPTH=$([ "$DEEP" = 1 ] && echo "Do DEEP research: switch x_search.model to grok-4.3 and fan out up to 3 parallel sub-searchers." || echo "Quick research is fine.")
+hermes -p devos-researcher --yolo -z "Research this goal with Grok x_search. $DEPTH Write a cited brief to the file $RUN/brief.md with sections: Answer, Key findings (each with a source URL), Disagreements/gaps, Confidence (High/Med/Low). GOAL: $GOAL.${REPO:+ Target repo: $REPO.}" > "$RUN/research.out" 2>&1 || true
+[ -s "$RUN/brief.md" ] || cp "$RUN/research.out" "$RUN/brief.md"
+say "   brief → $RUN/brief.md"
+
+# 2) PLAN (devos-planner / Codex) -----------------------------------------------------------------
+say "2/5 plan (Codex)"
+note "planning started"
+hermes -p devos-planner --yolo -z "Read the research brief at $RUN/brief.md. Write an approval-ready spec to $RUN/spec.md with sections: Problem, Goal, Non-goals, Constraints, Acceptance criteria (each checkable), Risks. Then run your spec-critic pass and fix issues inline. GOAL: $GOAL." > "$RUN/plan.out" 2>&1 || true
+[ -s "$RUN/spec.md" ] || cp "$RUN/plan.out" "$RUN/spec.md"
+say "   spec → $RUN/spec.md"
+
+# 3) GATE -----------------------------------------------------------------------------------------
+say "3/5 plan gate"
+echo "──────── SPEC ────────"; sed -n '1,80p' "$RUN/spec.md"; echo "──────────────────────"
+if [ "$NO_GATE" = 1 ]; then
+  say "   auto-approved (--no-gate)"; note "auto-approved"
+elif [ -e /dev/tty ]; then
+  printf '\033[1;33mApprove this plan and build it? [y/N] \033[0m'; read -r ans </dev/tty || ans=n
+  case "$ans" in y|Y|yes) note "approved by human" ;; *) say "stopped at gate. spec: $RUN/spec.md"; note "rejected at gate"; exit 0 ;; esac
+else
+  say "no TTY — re-run with --no-gate to proceed autonomously. spec: $RUN/spec.md"; exit 0
+fi
+
+# 4) BUILD (devcrew) ------------------------------------------------------------------------------
+say "4/5 build (devcrew)"
+note "build dispatched to devcrew"
+BUILD_GOAL="Implement the approved spec at $RUN/spec.md. Goal: $GOAL."
+if [ "$DRY_BUILD" = 1 ]; then
+  echo "   [dry-build] would run: devcrew-run \"$BUILD_GOAL\" ${REPO:-<repo>}"
+elif command -v devcrew-run >/dev/null 2>&1; then
+  devcrew-run "$BUILD_GOAL" ${REPO:+"$REPO"} --no-daemon
+  say "   devcrew tasks staged — run: hermes kanban daemon"
+else
+  say "   devcrew-run not found — install hermes-devcrew, then: devcrew-run \"$BUILD_GOAL\" $REPO"
+fi
+
+# 5) REPORT (devos / Codex) -----------------------------------------------------------------------
+say "5/5 report"
+hermes -p devos --yolo -z "Summarize this run as a 1-3-1 brief and write $RUN/report.md. What was researched ($RUN/brief.md), planned ($RUN/spec.md), and dispatched to devcrew for GOAL: $GOAL." > "$RUN/report.out" 2>&1 || true
+[ -s "$RUN/report.md" ] || cp "$RUN/report.out" "$RUN/report.md"
+note "reported"; [ -n "$TRACK" ] && hermes kanban --board "$BOARD" complete "$TRACK" >/dev/null 2>&1 || true
+
+cat <<DONE
+
+✅ devos-run complete for: $GOAL
+   brief : $RUN/brief.md
+   spec  : $RUN/spec.md
+   report: $RUN/report.md
+   board : hermes kanban --board $BOARD ls
+DONE
