@@ -71,7 +71,10 @@ done
 hermes profile describe devos --text "Dev OS coordinator: routes goals to researcher/planner/devcrew, gates at the plan, tracks the board." >/dev/null 2>&1 || true
 hermes profile describe devos-researcher --text "Research specialist: Grok web research with parallel sub-searchers; cited briefs." >/dev/null 2>&1 || true
 hermes profile describe devos-planner --text "Planning specialist: goal+brief -> approval-ready specs with checkable acceptance criteria." >/dev/null 2>&1 || true
-hermes --profile devos-researcher tools enable x_search >/dev/null 2>&1 || true
+# Researcher gets the full research stack; devos + planner get the power/recall toolsets.
+for t in x_search moa context_engine; do hermes --profile devos-researcher tools enable "$t" >/dev/null 2>&1 || true; done
+hermes --profile devos tools enable moa >/dev/null 2>&1 || true
+hermes --profile devos-planner tools enable web >/dev/null 2>&1 || true
 [ -f "$HOME_DIR/.env" ] && while IFS= read -r line; do case "$line" in OPENROUTER*) v="${line%%=*}"; for p in devos devos-researcher devos-planner; do pe="$HOME_DIR/profiles/$p/.env"; [ -d "${pe%/*}" ] && { touch "$pe"; grep -q "^$v=" "$pe" 2>/dev/null || printf '%s\n' "$line" >> "$pe"; }; done;; esac; done < "$HOME_DIR/.env" || true
 chmod +x "$SRC/devos-run" "$SRC/devos-improve" 2>/dev/null || true
 [ -d "$HOME/.local/bin" ] && { ln -sf "$SRC/devos-run" "$HOME/.local/bin/devos-run"; ln -sf "$SRC/devos-improve" "$HOME/.local/bin/devos-improve"; say "linked devos-run + devos-improve"; }

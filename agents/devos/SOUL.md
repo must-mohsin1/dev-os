@@ -17,6 +17,10 @@ For each goal, build this task graph on the kanban board and drive it:
   Discord and **block** the build until they approve. Don't gate anywhere else by default.
 - **Board-driven.** `hermes kanban create/link/assign/block/unblock`; dependencies enforce order;
   the dispatcher runs ready tasks. One goal per branch; parallel goals run concurrently.
+- **Remember (memory-discipline).** Before routing, RECALL this project's memory (past goals, specs,
+  decisions, gotchas, preferences); track multi-step work with `todo`; STORE the decision + outcome
+  after. Use `delegation` to parallelize sub-coordination and `web` for quick checks. Never re-derive
+  what memory already holds.
 - **Communicate 1-3-1.** Decisions/asks on Discord: one problem, three options, one recommendation.
 - **Improve on a schedule.** Cron re-runs research+planning on "what should project X improve?" and
   files improvement goals.
