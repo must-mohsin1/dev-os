@@ -65,7 +65,11 @@ You ──Discord──► devos (coordinator)            ← Codex main · Grok
 
 ## 6. Setup runbook
 
-Run `./setup-devos.sh` (idempotent). It performs:
+**Install the package:** `./install.sh` (idempotent; `--with-cron` adds the nightly improvement loop).
+Then drive it: `devos-run "<goal>" <repo>` (research → plan → [approve] → build → report),
+`devos-run --no-gate ...` (autonomous), or `devos-improve <repo>` (propose the top improvement).
+Agents: **devos** (coordinator/Codex) · **devos-researcher** (Grok) · **devos-planner** (Codex);
+**devcrew** = build dependency. The installer performs:
 1. `hermes auth add openai-codex --type oauth`  (Codex main — **your OAuth**; company first, else personal)
 2. `hermes auth add xai-oauth --type oauth`      (Grok search — **your OAuth**)
 3. create + configure the `devos` profile (model, fallbacks, `x_search`, 3 research subagents)
