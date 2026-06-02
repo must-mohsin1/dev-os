@@ -18,9 +18,11 @@ hermes -p devos-researcher --yolo -z "Analyze the repository at $RABS (read READ
 [ -s "$RUN/improve-brief.md" ] || cp "$RUN/r.out" "$RUN/improve-brief.md"
 
 say "2/3 spec the top improvement (planner / Codex)"
-hermes -p devos-planner --yolo -z "Read $RUN/improve-brief.md. Pick the SINGLE highest-value improvement for $RABS and write an approval-ready spec to $RUN/improve-spec.md (Problem, Goal, Non-goals, Acceptance criteria, Risks). Run your spec-critic pass." > "$RUN/p.out" 2>&1 || true
+plan_spec(){ hermes -p devos-planner --yolo -z "Read $RUN/improve-brief.md. Pick the SINGLE highest-value improvement for $RABS and write an approval-ready spec to $RUN/improve-spec.md (Problem, Goal, Non-goals, Acceptance criteria, Risks). Run your spec-critic pass." > "$RUN/p.out" 2>&1 || true; }
+plan_spec
+grep -qiE 'acceptance|non-goal' "$RUN/improve-spec.md" 2>/dev/null || { say "  planner produced no spec — retrying once"; plan_spec; }
 [ -s "$RUN/improve-spec.md" ] || cp "$RUN/p.out" "$RUN/improve-spec.md"
-TITLE=$(grep -m1 -E '^#|Goal:' "$RUN/improve-spec.md" 2>/dev/null | sed 's/^#* *//;s/Goal:* *//' | cut -c1-70)
+TITLE=$(grep -m1 -E '^#|Goal:' "$RUN/improve-spec.md" 2>/dev/null | sed 's/^#* *//;s/Goal:* *//' | cut -c1-70 || true)
 
 say "3/3 file proposal + devos summary"
 hermes kanban --board "$BOARD" create "improve($slug): ${TITLE:-proposal}" --assignee devos >/dev/null 2>&1 || true
