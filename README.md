@@ -68,6 +68,10 @@ hermes gateway start                                     # then talk to devos on
 ```
 Artifacts land in `~/.dev-os-runs/<goal>/` (`brief.md`, `spec.md`, `report.md`).
 
+**Every project gets its own kanban board** — auto-named after the repo (`/path/to/MunafaIQ` → board
+`munafaiq`), so work never mixes. Inspect with `hermes kanban --board <name> ls`; override the name
+with `DEVCREW_BOARD=myname`.
+
 ## The team
 | Agent | Model | Job |
 |---|---|---|

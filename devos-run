@@ -24,7 +24,10 @@ DEEP_LABEL=""; [ "$DEEP" = 1 ] && DEEP_LABEL=", deep"
 say(){ printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 slug=$(printf '%s' "$GOAL" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-' | cut -c1-40)
 RUN="$HOME/.dev-os-runs/${slug:-goal}"; mkdir -p "$RUN"
-BOARD="${DEVCREW_BOARD:-devcrew}"
+# Separate kanban board per project (named after the repo); DEVCREW_BOARD overrides.
+if [ -n "${DEVCREW_BOARD:-}" ]; then BOARD="$DEVCREW_BOARD"
+elif [ -n "$REPO" ]; then BOARD="$(basename "$REPO" | tr '[:upper:] ' '[:lower:]-' | tr -cd 'a-z0-9-')"
+else BOARD="devcrew"; fi
 hermes kanban init >/dev/null 2>&1 || true
 hermes kanban boards create "$BOARD" >/dev/null 2>&1 || true
 TRACK=$(hermes kanban --board "$BOARD" create "goal: $GOAL" --assignee devos 2>/dev/null | grep -oE 't_[a-z0-9]+' | head -1 || true)
