@@ -1,12 +1,15 @@
 # dev-os :: planner  (partial config; Hermes deep-merges over defaults)
+# gpt-5.3-codex-spark is the ONLY Codex model a ChatGPT-account login serves; the API-only
+# ids (gpt-5.3-codex, gpt-5-codex, codex-mini-latest) return 400 "not supported when using
+# Codex with a ChatGPT account". api_mode is omitted so Hermes auto-selects codex/responses
+# (the backend rejects chat_completions).
 model:
   provider: openai-codex
-  default: gpt-5.3-codex
-  api_mode: chat_completions
+  default: gpt-5.3-codex-spark
 toolsets:
   - hermes-cli
 agent:
-  reasoning_effort: gpt-5.3-codex
+  reasoning_effort: gpt-5.3-codex-spark
   max_turns: 90
 fallback_providers:
   - { provider: openrouter, model: openai/gpt-5.5, base_url: https://openrouter.ai/api/v1, api_mode: chat_completions }
