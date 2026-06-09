@@ -104,7 +104,7 @@ goal ─► devos.decompose ─► board:
 | devos | `gpt-5.3-codex` | Codex OAuth |
 | researcher | `grok-4.20-reasoning` (quick) / `grok-4.3` (deep) | xAI OAuth (x_search) |
 | planner | `gpt-5.3-codex` (+critic) | Codex OAuth |
-| fallback (any) | `openai/gpt-5.5`, `deepseek/deepseek-v4-pro` | OpenRouter |
+| fallback (any) | `openai/gpt-5.5`, `deepseek/deepseek-v4-flash` | OpenRouter |
 **Never Claude or Gemini.** Comms: Discord.
 
 ## 8. Shipping — `dev-os` package

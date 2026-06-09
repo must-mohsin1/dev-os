@@ -2,7 +2,7 @@
 # Dev OS setup — configures the `devos` coordinator profile per DEVOS.md.
 #   ./setup-devos.sh            full setup (runs the two OAuth logins)
 #   ./setup-devos.sh --config   config only (skip OAuth; safe to re-run)
-# Policy: Codex main · OpenRouter fallback (gpt-5.5, deepseek-v4-pro) · Grok web search ·
+# Policy: Codex main · OpenRouter fallback (gpt-5.5, deepseek-v4-flash) · Grok web search ·
 #         Discord gateway · NO Claude/Gemini.
 # NOTE: `hermes login` was removed in 0.14.x — credentials are managed via `hermes auth`.
 set -euo pipefail
@@ -36,7 +36,7 @@ else
   cfg model.provider openrouter; cfg model.default openai/gpt-5.5; cfg model.base_url https://openrouter.ai/api/v1
 fi
 say "Add the recommended fallbacks (interactive picker):"
-echo "    hermes --profile $PROFILE fallback add   # → openai/gpt-5.5, then deepseek/deepseek-v4-pro"
+echo "    hermes --profile $PROFILE fallback add   # → openai/gpt-5.5, then deepseek/deepseek-v4-flash"
 
 # 4) Grok web search
 cfg x_search.model grok-4.20-reasoning      # quick. Deep research: set to grok-4.3 per run.
@@ -53,7 +53,7 @@ cat <<DONE
 ✅ Dev OS '$PROFILE' configured (see DEVOS.md).
    Main: Codex (or OpenRouter gpt-5.5) · Search: Grok x_search · Gateway: Discord · No Claude/Gemini
 Next:
-  hermes --profile $PROFILE fallback add        # add gpt-5.5 + deepseek/deepseek-v4-pro
+  hermes --profile $PROFILE fallback add        # add gpt-5.5 + deepseek/deepseek-v4-flash
   hermes gateway start                          # talk to it on Discord
   hermes --profile $PROFILE -z "ping"           # smoke test
 DONE

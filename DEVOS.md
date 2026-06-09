@@ -15,12 +15,12 @@ team across isolated branches.
 |---|---|---|---|
 | **Main model** | **Codex** (personal, OAuth) | codex (OpenAI) | `hermes auth add openai-codex --type oauth` |
 | Fallback #1 | OpenRouter (already authed) | `openai/gpt-5.5` | `hermes fallback add` |
-| Fallback #2 | OpenRouter | `deepseek-ai/deepseek-v4-pro` | `hermes fallback add` |
+| Fallback #2 | OpenRouter | `deepseek/deepseek-v4-flash` | `hermes fallback add` |
 | **Interim primary** (until Codex login) | OpenRouter | `openai/gpt-5.5` | set now — keeps the Dev OS working today |
 | 🚫 **Disallowed by policy** | — | **Claude, Gemini** (OAuth) | never set as model/fallback |
 
 > If the **company** Codex OAuth fails, the personal Codex OAuth or the OpenRouter account
-> (`openai/gpt-5.5`, `deepseek-ai/deepseek-v4-pro`) is the sanctioned fallback. All confirmed present
+> (`openai/gpt-5.5`, `deepseek/deepseek-v4-flash`) is the sanctioned fallback. All confirmed present
 > in the model catalog.
 
 ## 2. Web search — Grok (xAI)
@@ -81,7 +81,7 @@ Agents: **devos** (coordinator/Codex) · **devos-researcher** (Grok) · **devos-
 | Item | State |
 |---|---|
 | Provider support (openai-codex, xai-oauth, openrouter) | ✅ confirmed via `hermes auth add` |
-| Models exist (gpt-5.5, deepseek-v4-pro, grok-4.20, grok-4-20-multi-agent) | ✅ in catalog |
+| Models exist (gpt-5.5, deepseek-v4-flash, grok-4.20, grok-4-20-multi-agent) | ✅ in catalog |
 | Discord gateway | ✅ configured |
 | Parallel dev (`-w` + devcrew swarm) | ✅ available |
 | `devos` coordinator profile | ✅ live on **Codex** (`gpt-5.3-codex`) |
