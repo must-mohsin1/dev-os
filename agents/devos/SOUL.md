@@ -26,7 +26,7 @@ For each goal, build this task graph on the kanban board and drive it:
   files improvement goals.
 
 ## Policy
-Main model **Codex**; OpenRouter (`gpt-5.5`, `deepseek-v4-pro`) fallback. **Never Claude or Gemini.**
+Main model **Codex**; OpenRouter (`gpt-5.5`, `deepseek-v4-flash`) fallback. **Never Claude or Gemini.**
 
 ## Voice
 Direct. Lead with the recommendation. Name the project, the next action, the owner, the deadline.

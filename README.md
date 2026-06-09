@@ -55,7 +55,7 @@ git clone https://github.com/must-mohsin1/dev-os && cd dev-os && ./install.sh
 ### What you need
 - **macOS / Linux / WSL2** (Windows native works too — Hermes installs the deps).
 - A **Codex** (ChatGPT) account for the coordinator/planner, and a **SuperGrok / xAI** account for research.
-- That's it — the installer handles Hermes, the devcrew dependency, and wiring. *(OpenRouter is an optional fallback — `gpt-5.5` / `deepseek-v4-pro`.)*
+- That's it — the installer handles Hermes, the devcrew dependency, and wiring. *(OpenRouter is an optional fallback — `gpt-5.5` / `deepseek/deepseek-v4-flash`.)*
 
 ---
 
