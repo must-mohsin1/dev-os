@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.4.0
+version: 3.5.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -9,18 +9,23 @@ metadata:
     tags: [kanban, multi-agent, orchestration, routing]
     related_skills: [kanban-worker]
 ---
+<!-- Doctrine rule: any edit to this file MUST bump the minor version — drift detection across profile copies depends on it. -->
 
 # Kanban Orchestrator — Decomposition Playbook
 
 > The **core worker lifecycle** (including the `kanban_create` fan-out pattern and the "decompose, don't execute" rule) is auto-injected into every kanban process via the `KANBAN_GUIDANCE` system-prompt block. This skill is the deeper playbook when you're an orchestrator profile whose whole job is routing.
 
+> **Doctrine hierarchy:** this skill derives from the team manifests —
+> `dev-os/team.yaml` + `DEVOS.md` (pipeline; ONE human gate, at the plan) and
+> `hermes-devcrew/team.yaml` (build topology: parallel workers → reviewer ∥ QA →
+> integrator). On any conflict between this text and the manifests, the
+> manifests win.
+
 ## References
-- `references/control-plane-monorepo-ops.md` — concrete control-plane item2 orchestration patterns observed in this session (board/env handling, required checks, command footguns).
-- `references/control-plane-item2-vault-rotation.md` — item2 vault-rotation + role-hierarchy session: verification commands, card graph, and the 5-step review-required recovery that unblocked the chain.
-- `references/control-plane-item3-multi-tenant.md` — item3 multi-tenant org + signup/onboarding session: the planner-budget-trap recovery (inlined evidence), the 16+ self-block cascade, the integrator false-alarm + verification path, and the final-integration-by-orchestrator pattern.
-- `references/control-plane-item4-agent-catalog.md` — item4 agent catalog session: the planner stale-summary-cache pattern (different from the budget trap), the CLI `link A B` direction pitfall (FIRST_ARG=PARENT), and why item4 didn't trigger kanban-doctor's self-block pattern.
-- `references/control-plane-item5-deploy-options.md` — item5 deploy options session: the researcher-profile toolset pitfall (default config ships with only kanban_* tools, research tasks fail with "Missing tools"), the force-close-research-card pitfall, the planner running before v2 research produced output, and the final-build false-alarm pattern recurring.
-- `references/research-body-template.md` — copy-and-modify templates for research task bodies; v2 (default; includes the CRITICAL tool-inventory assertion block) and v1 (legacy opt-out for non-grok models).
+- `references/research-body-template.md` — copy-and-modify templates for research task bodies; v2 (default; includes the CRITICAL tool-inventory assertion block) and v1 (legacy opt-in for non-grok models).
+- `references/build-watching-playbook.md` — 4-minute poll cadence, stuck-worker detection signals, force-complete decision tree.
+- `references/structural-fixes-2026-06-11.md` — the 3-bug analysis (self-block doctrine, reviewer dep graph, rubber-stamp) behind the v2.1.0 worker doctrine and the safe-complete guard.
+- `references/rubber-stamp-recovery.md` — the pattern for closing review-required handoffs without rubber-stamping.
 
 ## Profiles are user-configured — not a fixed roster
 
@@ -229,9 +234,24 @@ Why this works: the original worker's LLM context has the file-not-found belief 
 
 **Reassignment vs. new task.** If a reviewer blocks with "needs changes," create a NEW task linked from the reviewer's task — don't re-run the same task with a stern look. The new task is assigned to the original implementer profile.
 
-**Force-completion of reviewer cards with unaddressed findings = rubber-stamp.** Reviewer and QA cards that list blocking issues must be either: (a) addressed by completing the fix cards they created, (b) escalated to the user, or (c) explicitly archived with a documented decision. Closing a reviewer card without addressing the findings is a rubber-stamp and breaks the build. Hit on control-plane item6-T14-reviewer (t_841c2622) which flagged 6 real issues — 3 of which were still in flight and 3 of which were addressed by not-yet-started cards. The right move was to comment, leave it open, and let the fix cards run. Closing it as "done" without addressing the findings was wrong, and the user caught it. **Rule: if a reviewer/QA card's last comment lists N blocking issues, you must (a) wait for the fix cards to complete, (b) ask the user, or (c) post a "I'll address these in <specific follow-up card>" comment BEFORE closing. Never just `complete` it.**
+**Force-completion of reviewer cards with unaddressed findings = rubber-stamp.** Reviewer and QA cards that list blocking issues must be either: (a) addressed by completing the fix cards they created, (b) escalated to the user, or (c) explicitly archived with a documented decision. Closing a reviewer card without addressing the findings is a rubber-stamp and breaks the build. Hit on control-plane item6-T14-reviewer (t_841c2622) which flagged 6 real issues — 3 of which were still in flight and 3 of which were addressed by not-yet-started cards. The right move was to comment, leave it open, and let the fix cards run. Closing it as "done" without addressing the findings was wrong, and the user caught it. **Rule: run the gate-card closeout procedure (below) and complete gate cards only via `scripts/safe-complete`. Never raw-`complete` a gate card.**
 
 **ALWAYS run `safe-complete` instead of `hermes kanban complete` directly.** The script ships in this skill at `scripts/safe-complete` (and is mirrored to `~/.hermes/profiles/devos/scripts/safe-complete` and `~/projects/mustCompany/must-dev-agents/dev-os/scripts/safe-complete` for direct invocation). It scans the card's recent comments for review-required markers (`review-required`, `blocking issues`, `needs eyes`, `design decision`, `Option A`, `Option B`, `needs human`, `rubber-stamp`, etc.) and refuses to complete the card if any are found. The script prints the offending comments so you can address them. Use this as a hard guard against the rubber-stamp anti-pattern (caught twice on item6: t_841c2622 and t_fd63cd4c — both were review-required handoffs that I force-completed by hand instead of using the guard). If `safe-complete` refuses, your options are: (a) address the findings, (b) escalate to the user, (c) explicitly archive with a documented decision, or (d) do the manual `hermes kanban complete` ONLY after posting a comment that documents why you're overriding the guard. The guard exists because I (the model) drift from skill text under pressure; the guard is documentation-as-code that enforces the rule for every call. See `references/rubber-stamp-recovery.md` for the full 3-step recovery pattern and `references/structural-fixes-2026-06-11.md` for the 3-bug analysis that produced this rule.
+
+**Gate-card closeout procedure (deterministic).** When a reviewer or QA card
+finishes with N blocking findings:
+
+1. Verify a fix card exists for every blocking finding; create the missing
+   ones, assigned to the original implementer profile, parented on the gate
+   card.
+2. Expand the **integrator's** parent set with those fix cards
+   (archive-and-recreate — see "Inserting a new step into an ALREADY-BUILT,
+   running graph"). The gate against unfixed code is the integrator's parent
+   set, not an open gate card.
+3. Comment on the gate card mapping each finding → its fix card id.
+4. Complete the gate card via `scripts/safe-complete`. Its deliverable is the
+   review, which now exists; keeping it open adds rubber-stamp pressure
+   without protection.
 
 **Argument order for links.** `kanban_link(parent_id=..., child_id=...)` — parent first. Mixing them up demotes the wrong task to `todo`.
 
@@ -451,12 +471,27 @@ A common stall pattern: a worker marks its card `blocked` with reason `review-re
 
 **Default to staged completion over immediate build.** When given a "approve and run the integration build" choice and there are still review-required prereqs, the user has consistently chosen to finish the staged work first ("Option 2" pattern). Don't push for the build card until the prereq chain is done — even if the code-level tests pass. The integrator card is cheap to run later; running it on unverified prereqs wastes the most expensive card in the graph.
 
-## Designing dep graphs that don't bottleneck on self-block
+## The canonical dep graph (per hermes-devcrew/team.yaml)
 
-The 5-step recovery is a tax, not a fix. If you find yourself running it repeatedly across runs, redesign the graph. Two structural moves that help:
+Historical note: this section previously advised making the Reviewer / QA /
+Integrator cards siblings of the code lanes, gated on the brief. That advice
+is retired — it was a workaround for routine worker self-blocks, which the
+v2.1.0 worker doctrine and the framework KANBAN_GUIDANCE fix eliminate. With
+self-blocks rare and genuine, early review of half-written code is the bug,
+not the mitigation.
 
-- **Make the Reviewer / QA / Integrator cards siblings of the code lanes, not children.** They should be gated on the spec / research card (the brief), not on every implementation card. That way a code-lane self-block cannot stall the reviewer from starting on the parts that ARE ready.
-- **Push the per-link dep mode story to the user.** A pending feature (per-link `strict` / `parallel` / `evidence` mode) would let a reviewer card claim once a parent is `running`, not `done`. Until that ships, use the structural-graph fix above. Mention both when the user reports recurring stalls — they may want to schedule the feature.
+The canonical topology (`hermes-devcrew/team.yaml` — on conflict, the
+manifest wins):
+
+- Implementation cards run in PARALLEL (siblings), linked only where one
+  truly consumes another's output (designer card upstream of frontend impl).
+- Reviewer (static gate) and QA (dynamic gate) run in PARALLEL — each
+  parented on EVERY implementation card.
+- Integrator is parented on BOTH gates. When the gates produce fix cards,
+  expand the integrator's parent set with them (archive-and-recreate) before
+  it runs — see the gate-card closeout procedure in Pitfalls.
+- Per-link dep modes (`strict` / `parallel` / `evidence`) remain a pending
+  engine feature; mention it if the user reports recurring stalls.
 
 - **D3-first pattern for verify-and-ship builds.** When the build mandate is "verify what's in the working tree and ship it" (especially when the work is already done before the build runs), invert the usual reviewer-then-integrator ordering. Make the integrator's commit+push card the **parent** of the reviewer and QA cards, not their child. Concrete shape (used on the control-plane item2 final build):
   - `t_D3` — integrator — Final integration — commit, push, report SHA (no parents; starts immediately on dispatch)
