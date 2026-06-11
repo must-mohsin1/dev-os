@@ -27,24 +27,23 @@ if [[ -z "$TASK_ID" ]]; then
   exit 2
 fi
 
-# Markers that mean "this card needs review, do not rubber-stamp it"
+# Markers scoped to real gate-card evidence (item5/item6 block reasons).
+# Deliberately dropped as too generic: "needs review", "option A", "option B"
+# — they false-positive on ordinary research/decision cards.
 PATTERNS=(
   "review-required"
   "blocking issues"
   "needs eyes"
-  "needs review"
   "needs human"
   "design decision"
-  "option A"
-  "option B"
   "needs explicit"
   "needs decision"
   "needs approval"
   "rubber-stamp"
 )
 
-# Fetch the card. We use the JSON output of `hermes kanban show` so we can
-# parse it cleanly with jq.
+# Fetch the card. We parse the text output of `hermes kanban show`
+# (comments block, latest summary, diagnostics lines) with awk/grep.
 SHOW_OUTPUT="$(HERMES_KANBAN_BOARD="$BOARD" DEVCREW_BOARD="$BOARD" hermes kanban show "$TASK_ID" 2>/dev/null || true)"
 
 if [[ -z "$SHOW_OUTPUT" ]]; then
