@@ -4,6 +4,11 @@
 # install.sh §4a snapshots each profile's skills before the install and merges
 # back any top-level skill dir the install removed. This probe guards that.
 #
+# The underlying wipe is fixed upstream: https://github.com/NousResearch/hermes-agent/pull/44386
+# (fixes https://github.com/NousResearch/hermes-agent/issues/25120). Once the deployed
+# hermes-agent includes that fix, §4a can be removed — this probe verifies removal-readiness:
+# with §4a reverted it should still report extras preserved.
+#
 #   scripts/probe-install-preserves-extras.sh
 #
 # PASS = planted extra skills survive a reinstall, distribution skills still

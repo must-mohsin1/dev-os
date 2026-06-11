@@ -105,6 +105,9 @@ done
 # tree, silently deleting skills the live profile gained outside this repo. Merge back every
 # top-level skill dir from the pre-install snapshot that the reinstall removed.
 # Guarded by scripts/probe-install-preserves-extras.sh.
+# Workaround for https://github.com/NousResearch/hermes-agent/issues/25120, fixed upstream by
+# https://github.com/NousResearch/hermes-agent/pull/44386. Remove this block once the deployed
+# hermes-agent includes that fix — the probe then reports extras preserved even with §4a reverted.
 for s in "$SKILLS_SNAP"/*/; do
   [ -d "$s" ] || continue
   p="$(basename "$s")"
