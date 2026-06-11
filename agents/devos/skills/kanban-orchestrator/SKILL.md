@@ -20,7 +20,7 @@ metadata:
 - `references/control-plane-item3-multi-tenant.md` — item3 multi-tenant org + signup/onboarding session: the planner-budget-trap recovery (inlined evidence), the 16+ self-block cascade, the integrator false-alarm + verification path, and the final-integration-by-orchestrator pattern.
 - `references/control-plane-item4-agent-catalog.md` — item4 agent catalog session: the planner stale-summary-cache pattern (different from the budget trap), the CLI `link A B` direction pitfall (FIRST_ARG=PARENT), and why item4 didn't trigger kanban-doctor's self-block pattern.
 - `references/control-plane-item5-deploy-options.md` — item5 deploy options session: the researcher-profile toolset pitfall (default config ships with only kanban_* tools, research tasks fail with "Missing tools"), the force-close-research-card pitfall, the planner running before v2 research produced output, and the final-build false-alarm pattern recurring.
-- `references/research-body-template.md` — copy-and-modify templates for research task bodies; v1 (default) and v2 (after a "Missing tools" self-reject, appends the tool-inventory assertion block).
+- `references/research-body-template.md` — copy-and-modify templates for research task bodies; v2 (default; includes the CRITICAL tool-inventory assertion block) and v1 (legacy opt-out for non-grok models).
 
 ## Profiles are user-configured — not a fixed roster
 
@@ -428,7 +428,7 @@ Hallucination warnings appear on tasks where a worker's `kanban_complete(created
 
 A common stall pattern: a worker marks its card `blocked` with reason `review-required: <handoff summary>`, then sits waiting for a human reviewer. The dispatcher respects `blocked` and will NOT promote any downstream children, even if every dependency is otherwise met. If the parent card is the root of a long chain (e.g. role-hierarchy, secret-resolver, integration bridge), the whole pipeline can sit idle for hours. Verify-by-asking the user is the wrong move when YOU can re-run the verification yourself with the test commands the handoff names.
 
-**The 5-step recovery (orchestrator-side, no human in the loop needed):**
+**The recovery procedure (orchestrator-side, no human in the loop needed):**
 
 1. **Re-run the verification the handoff names.** Don't trust the worker's self-reported pass count — re-execute it and capture the result.
    - For backend: `uv run pytest <paths> -q` from the repo root
