@@ -1,7 +1,10 @@
 ---
 name: kanban-doctor
-description: Diagnose and recover a stuck Hermes Kanban board. Use when user says "board not moving", "kanban stuck", "frozen", "stalled", "no progress", or "check the board". Detects the review-required self-block pattern (the #1 cause of stalls on devcrew workstreams) and the non-spawnable-assignee pattern (the #2 cause), runs verification, and unblocks/reassigns/completes the affected cards in one shot.
+version: 1.1.0
+description: Diagnose and recover a stuck Hermes Kanban board. Use when user says "board not moving", "kanban stuck", "frozen", "stalled", "no progress", or "check the board". Detects the review-required self-block pattern (historically the #1 cause of stalls; rare after the v2.1.0 worker doctrine — remaining blocks are often genuine) and the non-spawnable-assignee pattern, classifies blocks as genuine-concern vs false-positive, escalates the genuine ones to the human, and recovers the false positives.
 ---
+
+<!-- Doctrine rule: any edit to this file MUST bump the minor version — drift detection across profile copies depends on it. -->
 
 # kanban-doctor
 
@@ -62,6 +65,24 @@ For each `blocked` task, check the latest comment for:
 
 If the handoff claims passing tests and matches the "code is in" pattern, this is recoverable.
 
+### 3b. Classify each block BEFORE recovering (genuine concern vs false positive)
+
+Read each blocked card's reason string. Two classes, two different paths:
+
+- **Genuine human-only concern** — the reason names security/credential
+  changes, schema/migration changes, external-network actions (deploy, push,
+  provisioning), or a concrete ambiguity/decision. **Do NOT run steps 4-8 for
+  this card.** Escalate instead: post a `decision-brief` (1-3-1) to the human
+  on Discord with the card id, the concern, and your recommendation, and
+  leave the card blocked. The human's `unblock` is the resolution.
+  Auto-completing these is the rubber-stamp anti-pattern with extra steps.
+- **Legacy false positive** — the reason is generic ("needs review", "needs
+  eyes", tests pass, no concrete concern named). Proceed with steps 4-8
+  (verify → reclaim → unblock → comment → complete via safe-complete).
+
+When unsure, escalate. A wrongly-escalated card costs the human one unblock;
+a wrongly-completed card ships an unreviewed security or schema change.
+
 ### 4. Verify the test claims locally
 Pick the relevant test files and run pytest:
 ```bash
@@ -90,7 +111,7 @@ HERMES_KANBAN_BOARD=<board> DEVCREW_BOARD=<board> hermes kanban comment <task_id
 
 ### 8. Complete the tasks
 ```bash
-HERMES_KANBAN_BOARD=<board> DEVCREW_BOARD=<board> hermes kanban complete <task_id> [<task_id> ...]
+~/.hermes/profiles/devos/scripts/safe-complete <task_id> <board>   # one id at a time; refuses cards with live review markers
 ```
 
 ### 9. Trigger dispatch
@@ -145,7 +166,6 @@ If the user reports "board not moving" repeatedly across runs, this is the desig
 
 **Reference build that applied this pattern correctly: control-plane item2 final build pass.** When the user invoked devcrew-run with a "build pass" prompt (workstream complete, mandate = commit + push + report SHA, "do NOT redo implementation work"), the architect produced a tight 3-card build where the integrator (D3, commit+push) was the PARENT of the reviewer (D1) and QA (D2) cards. D3 ran first, committed and pushed, and D1/D2 then validated the actual push — not just the working tree. This is the structural pattern that prevents code-lane self-blocks from holding up delivery: integration happens once, then the gates run on what's actually delivered. When decomposing a final-build run, force this shape: integrator is the root, reviewer and QA are children. Ship the commit, then validate.
 
-## Related
 ## Related
 - `references/pattern-2-non-spawnable-assignee.md` — non-spawnable profile recovery.
 - `references/patterns-3-and-4-integrator-and-reviewer-false-alarms.md` — final-integration false alarm + reviewer transient findings.
