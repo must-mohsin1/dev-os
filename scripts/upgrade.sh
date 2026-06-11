@@ -38,4 +38,7 @@ chmod +x devos-run devos-improve 2>/dev/null || true
   ln -sf "$INSTALL_DIR/devos-improve" "$HOME/.local/bin/devos-improve"
 }
 
+# Propagate doctrine seeds (global tree + stray profiles + categorized duplicates)
+bash "$INSTALL_DIR/scripts/sync-doctrine.sh" || echo "sync-doctrine completed with warnings"
+
 echo "dev-os upgrade: done ($(cat VERSION 2>/dev/null || echo unknown))"
