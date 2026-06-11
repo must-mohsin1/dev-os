@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.5.0
+version: 3.6.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -237,7 +237,7 @@ Why this works: the original worker's LLM context has the file-not-found belief 
 
 **Force-completion of reviewer cards with unaddressed findings = rubber-stamp.** Reviewer and QA cards that list blocking issues must be either: (a) addressed by completing the fix cards they created, (b) escalated to the user, or (c) explicitly archived with a documented decision. Closing a reviewer card without addressing the findings is a rubber-stamp and breaks the build. Hit on control-plane item6-T14-reviewer (t_841c2622) which flagged 6 real issues — 3 of which were still in flight and 3 of which were addressed by not-yet-started cards. The right move was to comment, leave it open, and let the fix cards run. Closing it as "done" without addressing the findings was wrong, and the user caught it. **Rule: run the gate-card closeout procedure (below) and complete gate cards only via `scripts/safe-complete`. Never raw-`complete` a gate card.**
 
-**ALWAYS run `safe-complete` instead of `hermes kanban complete` directly.** The script ships in this skill at `scripts/safe-complete` (and is mirrored to `~/.hermes/profiles/devos/scripts/safe-complete` and `~/projects/mustCompany/must-dev-agents/dev-os/scripts/safe-complete` for direct invocation). It scans the card's recent comments for review-required markers (`review-required`, `blocking issues`, `needs eyes`, `design decision`, `Option A`, `Option B`, `needs human`, `rubber-stamp`, etc.) and refuses to complete the card if any are found. The script prints the offending comments so you can address them. Use this as a hard guard against the rubber-stamp anti-pattern (caught twice on item6: t_841c2622 and t_fd63cd4c — both were review-required handoffs that I force-completed by hand instead of using the guard). If `safe-complete` refuses, your options are: (a) address the findings, (b) escalate to the user, (c) explicitly archive with a documented decision, or (d) do the manual `hermes kanban complete` ONLY after posting a comment that documents why you're overriding the guard. The guard exists because I (the model) drift from skill text under pressure; the guard is documentation-as-code that enforces the rule for every call. See `references/rubber-stamp-recovery.md` for the full 3-step recovery pattern and `references/structural-fixes-2026-06-11.md` for the 3-bug analysis that produced this rule.
+**ALWAYS run `safe-complete` instead of `hermes kanban complete` directly.** The script ships in this skill at `scripts/safe-complete` (and is mirrored to `~/.hermes/profiles/devos/scripts/safe-complete` and `~/projects/mustCompany/must-dev-agents/dev-os/scripts/safe-complete` for direct invocation). It scans the card's recent comments for review-required markers (`review-required`, `blocking issues`, `needs eyes`, `needs human`, `design decision`, `needs explicit`, `needs decision`, `needs approval`, `rubber-stamp` — generic phrases like "needs review" / "Option A" / "Option B" are deliberately NOT matched; they false-positive on ordinary cards) and refuses to complete the card if any are found. The script prints the offending comments so you can address them. Use this as a hard guard against the rubber-stamp anti-pattern (caught twice on item6: t_841c2622 and t_fd63cd4c — both were review-required handoffs that I force-completed by hand instead of using the guard). If `safe-complete` refuses, your options are: (a) address the findings, (b) escalate to the user, (c) explicitly archive with a documented decision, or (d) do the manual `hermes kanban complete` ONLY after posting a comment that documents why you're overriding the guard. The guard exists because I (the model) drift from skill text under pressure; the guard is documentation-as-code that enforces the rule for every call. See `references/rubber-stamp-recovery.md` for the full 3-step recovery pattern and `references/structural-fixes-2026-06-11.md` for the 3-bug analysis that produced this rule.
 
 **Gate-card closeout procedure (deterministic).** When a reviewer or QA card
 finishes with N blocking findings:
@@ -395,23 +395,26 @@ Key corrections captured 2026-06-11 on control-plane item5:
   `~/projects/mustCompany/must-dev-agents/dev-os/scripts/safe-complete`
   for direct invocation). It scans the card's recent comments for
   review-required markers (`review-required`, `blocking issues`,
-  `needs eyes`, `design decision`, `Option A`, `Option B`, `needs
-  human`, `rubber-stamp`, etc.) and refuses to complete the card if
-  any are found. The script prints the offending comments so you
-  can address them. Use this as a hard guard against the
-  rubber-stamp anti-pattern (caught twice on item6: t_841c2622 and
-  t_fd63cd4c — both were review-required handoffs that I
-  force-completed by hand instead of using the guard). If
-  `safe-complete` refuses, your options are: (a) address the
-  findings, (b) escalate to the user, (c) explicitly archive with
-  a documented decision, or (d) do the manual `hermes kanban
-  complete` ONLY after posting a comment that documents why you're
-  overriding the guard. The guard exists because I (the model)
-  drift from skill text under pressure; the guard is
-  documentation-as-code that enforces the rule for every call.
-  See `references/rubber-stamp-recovery.md` for the full
-  3-step recovery pattern and `references/structural-fixes-2026-06-11.md`
-  for the 3-bug analysis that produced this rule.
+  `needs eyes`, `needs human`, `design decision`, `needs explicit`,
+  `needs decision`, `needs approval`, `rubber-stamp` — generic
+  phrases like "needs review" / "Option A" / "Option B" are
+  deliberately NOT matched; they false-positive on ordinary cards)
+  and refuses to complete the card if any are found. The script
+  prints the offending comments so you can address them. Use this
+  as a hard guard against the rubber-stamp anti-pattern (caught
+  twice on item6: t_841c2622 and t_fd63cd4c — both were
+  review-required handoffs that I force-completed by hand instead
+  of using the guard). If `safe-complete` refuses, your options
+  are: (a) address the findings, (b) escalate to the user, (c)
+  explicitly archive with a documented decision, or (d) do the
+  manual `hermes kanban complete` ONLY after posting a comment
+  that documents why you're overriding the guard. The guard exists
+  because I (the model) drift from skill text under pressure; the
+  guard is documentation-as-code that enforces the rule for every
+  call. See `references/rubber-stamp-recovery.md` for the full
+  3-step recovery pattern and
+  `references/structural-fixes-2026-06-11.md` for the 3-bug
+  analysis that produced this rule.
 
 ## Driving Kanban from the `hermes kanban` CLI (coordinator with terminal access)
 

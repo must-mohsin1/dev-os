@@ -1,10 +1,14 @@
 ---
 name: kanban-doctor
-version: 1.1.0
+version: 1.2.0
 description: Diagnose and recover a stuck Hermes Kanban board. Use when user says "board not moving", "kanban stuck", "frozen", "stalled", "no progress", or "check the board". Detects the review-required self-block pattern (historically the #1 cause of stalls; rare after the v2.1.0 worker doctrine — remaining blocks are often genuine) and the non-spawnable-assignee pattern, classifies blocks as genuine-concern vs false-positive, escalates the genuine ones to the human, and recovers the false positives.
 ---
 
 <!-- Doctrine rule: any edit to this file MUST bump the minor version — drift detection across profile copies depends on it. -->
+
+> **Doctrine hierarchy:** this skill derives from the team manifests
+> (`dev-os/team.yaml` + `DEVOS.md`, `hermes-devcrew/team.yaml`). On any
+> conflict between this text and the manifests, the manifests win.
 
 # kanban-doctor
 
@@ -159,20 +163,19 @@ The reviewer transient-findings pattern (Pattern 4) is the worker's-snapshot-of-
 
 ## Why you should also design graphs that avoid the pattern
 
-Recovery is a tax, not a fix. When you decompose a multi-lane workstream, design the dep graph so a code-lane self-block can't hold the whole chain. Two structural choices that reduce the recovery load:
-
-- **Reviewer/QA/Integrator lanes should NOT be children of every code card.** They should be siblings of the code lanes (gated only on the original spec/research card, not on every implementation card). That way code-lane self-blocks don't cascade.
-- **When in doubt, link in `parallel` mode for review/QA/integrator cards.** They need a snapshot of "all code is in", not "every parent card is `done`". If your kanban supports a per-link dep mode, set reviewer/QA to "parent `running` OR `done`". A pending feature for the kanban is per-link mode; until then, prefer the structural-graph fix (siblings, not children) over the per-link fix.
-
-If the user reports "board not moving" repeatedly across runs, this is the design fix to push them toward — not just another round of doctor recovery.
+Historical note: this section previously advised wiring Reviewer/QA/Integrator
+as siblings of the code lanes, gated on the brief. That advice is retired — it
+was a workaround for routine worker self-blocks, which the v2.1.0 worker
+doctrine eliminates. The canonical topology (`hermes-devcrew/team.yaml`, and
+the kanban-orchestrator skill's "canonical dep graph" section) is: impl cards
+parallel; reviewer ∥ QA gates each parented on every impl card; integrator
+parented on both gates. If the board stalls repeatedly, fix the blocked cards
+(classify per step 3b) — do not weaken the gate wiring.
 
 **Reference build that applied this pattern correctly: control-plane item2 final build pass.** When the user invoked devcrew-run with a "build pass" prompt (workstream complete, mandate = commit + push + report SHA, "do NOT redo implementation work"), the architect produced a tight 3-card build where the integrator (D3, commit+push) was the PARENT of the reviewer (D1) and QA (D2) cards. D3 ran first, committed and pushed, and D1/D2 then validated the actual push — not just the working tree. This is the structural pattern that prevents code-lane self-blocks from holding up delivery: integration happens once, then the gates run on what's actually delivered. When decomposing a final-build run, force this shape: integrator is the root, reviewer and QA are children. Ship the commit, then validate.
 
 ## Related
-- `references/pattern-2-non-spawnable-assignee.md` — non-spawnable profile recovery.
-- `references/patterns-3-and-4-integrator-and-reviewer-false-alarms.md` — final-integration false alarm + reviewer transient findings.
-- `references/junk-file-filter.md` — recurring junks workers leave in the working tree (verified across item2, item3, item4) and the orchestrator-side filter recipe for final-integration.
-- `references/patterns-5-and-6-researcher-and-planner-stalls.md` — researcher/Planner 90-iteration stalls: file written but worker silent (P5) and planner stuck in a stale "research missing" loop (P6).
+- `kanban-orchestrator` skill — canonical dep graph, gate-card closeout procedure, and build-watching playbook.
 
 ## Frequency signal
 
