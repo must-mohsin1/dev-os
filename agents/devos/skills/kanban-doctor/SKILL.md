@@ -184,13 +184,15 @@ On control-plane item2 the skill fired 7 times (T3, T5, T4, T7, T9, t_65718678, 
 
 ## Quick reference: the 5-step shape
 
+**Classify first (section 3b): if the block reason names a genuine human-only concern (security/credential, schema/migration, external-network action, concrete ambiguity), STOP — escalate via decision-brief and leave it blocked. The steps below are for false positives only.**
+
 When you're under time pressure, the minimal recovery is:
 
 1. `hermes kanban show <id>` — read the handoff
 2. `uv run pytest -q` — verify locally
 3. `hermes kanban reclaim <id>` (single id only)
 4. `hermes kanban unblock <id> --reason "..."`
-5. `hermes kanban complete <id>` (single id when mixing states)
+5. `~/.hermes/profiles/devos/scripts/safe-complete <id> <board>` (one id at a time; refuses cards with live review markers)
 
 Then `hermes kanban dispatch` and watch `Spawned: N`. If the task was assigned to a non-spawnable profile, swap step 1 for `hermes kanban assign <id> <spawnable_profile>` and re-dispatch.
 
