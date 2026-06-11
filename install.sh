@@ -9,6 +9,7 @@
 # Flags / env:
 #   --yes            auto-accept install prompts (Hermes, devcrew)
 #   --skip-oauth     don't run the Codex/Grok logins (set them up later)
+#   --manual-paste   pass OAuth callback text manually (browser-only remotes)
 #   --with-cron      register the nightly improvement loop (needs DEVOS_IMPROVE_REPO)
 #   DEVOS_REPO       git URL to clone when piped (default: the public repo)
 set -euo pipefail
@@ -16,15 +17,40 @@ DEVOS_REPO="${DEVOS_REPO:-https://github.com/must-mohsin1/dev-os}"
 DEVCREW_REPO="${DEVCREW_REPO:-https://github.com/must-mohsin1/hermes-devcrew}"
 HERMES_INSTALL="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh"
 HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
-YES=0; SKIP_OAUTH=0; WITH_CRON=0
+YES=0; SKIP_OAUTH=0; WITH_CRON=0; MANUAL_PASTE=0
 for a in "${@:-}"; do case "$a" in
-  --yes) YES=1 ;; --skip-oauth) SKIP_OAUTH=1 ;; --with-cron) WITH_CRON=1 ;;
+  --yes) YES=1 ;; --skip-oauth) SKIP_OAUTH=1 ;; --manual-paste) MANUAL_PASTE=1 ;; --with-cron) WITH_CRON=1 ;;
   -h|--help) grep '^#' "$0" | grep -v '^#!' | sed 's/^#\{1,\} \{0,1\}//'; exit 0 ;; "") ;;
 esac; done
 say(){ printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 warn(){ printf '\033[1;33m! %s\033[0m\n' "$*" >&2; }
 die(){ printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 ask(){ [ "$YES" = 1 ] && return 0; [ -e /dev/tty ] || return 1; printf '\033[1;33m? %s [y/N] \033[0m' "$1"; local r; read -r r </dev/tty || r=n; case "$r" in y|Y|yes) return 0;; *) return 1;; esac; }
+remote_session(){ [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_CLIENT:-}" ] || [ -n "${SSH_TTY:-}" ]; }
+AUTH_ARGS=()
+if [ "$MANUAL_PASTE" = 1 ] || remote_session; then
+  AUTH_ARGS+=(--manual-paste)
+  say "Using manual-paste OAuth flow (remote/SSH session or --manual-paste was set)."
+fi
+auth_add_oauth() {
+  local provider=$1; shift
+  local log first_rc second_rc
+  log="$(mktemp)"
+  if hermes auth add "$provider" --type oauth "$@" 2>&1 | tee "$log"; then
+    rm -f "$log"
+    return 0
+  fi
+  first_rc="${PIPESTATUS[0]:-1}"
+  if grep -q "Remote session detected" "$log"; then
+    rm -f "$log"
+    printf '%s\n' ">> Retrying $provider with --manual-paste..."
+    if hermes auth add "$provider" --type oauth --manual-paste; then return 0; fi
+    second_rc=$?
+    return "$second_rc"
+  fi
+  rm -f "$log"
+  return "$first_rc"
+}
 
 # 0) Prerequisite: Hermes -----------------------------------------------------------------------
 if ! command -v hermes >/dev/null 2>&1; then
@@ -56,8 +82,14 @@ else warn "Skipping devcrew — devos can research+plan but can't build until it
 # 3) Credentials: Codex + Grok OAuth (interactive) ----------------------------------------------
 authed(){ hermes auth list 2>/dev/null | grep -qi "$1"; }
 if [ "$SKIP_OAUTH" != 1 ]; then
-  authed openai-codex && say "Codex: authed" || { say "Codex login (main model) — opens your browser"; hermes auth add openai-codex --type oauth || warn "Codex login skipped — run later: hermes auth add openai-codex --type oauth"; }
-  authed xai && say "Grok: authed" || { say "Grok login (web search) — opens your browser"; hermes auth add xai-oauth --type oauth || warn "Grok login skipped — run later: hermes auth add xai-oauth --type oauth"; }
+  authed openai-codex && say "Codex: authed" || {
+    say "Codex login (main model) — opens your browser"
+    auth_add_oauth "openai-codex" "${AUTH_ARGS[@]}" || warn "Codex login skipped — run later: hermes auth add openai-codex --type oauth ${AUTH_ARGS[*]}"
+  }
+  authed xai && say "Grok: authed" || {
+    say "Grok login (web search) — opens your browser"
+    auth_add_oauth "xai-oauth" "${AUTH_ARGS[@]}" || warn "Grok login skipped — run later: hermes auth add xai-oauth --type oauth ${AUTH_ARGS[*]}"
+  }
 else warn "Skipping OAuth — set up later: hermes auth add openai-codex --type oauth ; hermes auth add xai-oauth --type oauth"; fi
 
 # 4) Install the 3 agents -----------------------------------------------------------------------

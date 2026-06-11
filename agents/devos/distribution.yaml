@@ -1,7 +1,7 @@
 # dev-os :: devos
 # A Hermes profile distribution. Install with:  hermes profile install ./agents/devos --yes
 name: devos
-version: 0.1.0
+version: 0.1.1
 description: "high|Dev OS coordinator — decomposes goals, routes to researcher/planner/devcrew, gates at the plan, tracks the board, reports."
 hermes_requires: ">=0.12.0"
 author: "dev-os"
