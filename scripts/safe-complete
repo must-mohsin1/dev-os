@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+# safe-complete — guard wrapper for `hermes kanban complete` that refuses to
+# complete a card whose recent comments contain review-required markers.
+#
+# Use: safe-complete <task_id> [board]
+#   task_id: the kanban card id to complete
+#   board:   optional board name (defaults to $HERMES_KANBAN_BOARD or "control-plane")
+#
+# Exits 0 and calls `hermes kanban complete <task_id>` if the card has no
+# review-required content in its recent comments.
+# Exits 1 and prints the offending comments if review-required content is found.
+# The orchestrator MUST read the printed comments and either address the
+# findings, escalate to the user, or explicitly archive with a documented
+# decision. NEVER just call `hermes kanban complete` directly.
+#
+# This enforces the rule added to kanban-orchestrator/SKILL.md on 2026-06-11
+# after the user caught me force-completing item6-T14-reviewer (t_841c2622)
+# and again on t_fd63cd4c with unaddressed review findings.
+
+set -euo pipefail
+
+TASK_ID="${1:-}"
+BOARD="${2:-${HERMES_KANBAN_BOARD:-control-plane}}"
+
+if [[ -z "$TASK_ID" ]]; then
+  echo "usage: safe-complete <task_id> [board]" >&2
+  exit 2
+fi
+
+# Markers that mean "this card needs review, do not rubber-stamp it"
+PATTERNS=(
+  "review-required"
+  "blocking issues"
+  "needs eyes"
+  "needs review"
+  "needs human"
+  "design decision"
+  "option A"
+  "option B"
+  "needs explicit"
+  "needs decision"
+  "needs approval"
+  "rubber-stamp"
+)
+
+# Fetch the card. We use the JSON output of `hermes kanban show` so we can
+# parse it cleanly with jq.
+SHOW_OUTPUT="$(HERMES_KANBAN_BOARD="$BOARD" DEVCREW_BOARD="$BOARD" hermes kanban show "$TASK_ID" 2>/dev/null || true)"
+
+if [[ -z "$SHOW_OUTPUT" ]]; then
+  echo "safe-complete: cannot read task $TASK_ID on board $BOARD" >&2
+  exit 2
+fi
+
+# Extract recent comments (last 5 lines starting with "  [") and check for
+# review-required markers. We also check the most recent `blocked` reason
+# and the latest summary line.
+COMMENTS="$(echo "$SHOW_OUTPUT" | awk '/^Comments \(/{flag=1; next} flag && /^$/{flag=0} flag')"
+LATEST_SUMMARY="$(echo "$SHOW_OUTPUT" | awk '/^Latest summary:/{flag=1; next} flag && /^$/{flag=0} flag' | head -20)"
+BLOCKED_REASON="$(echo "$SHOW_OUTPUT" | grep -E "review-required|needs eyes|blocking|design decision" | head -3 || true)"
+
+MATCHES=""
+
+# Check comments
+for pat in "${PATTERNS[@]}"; do
+  if echo "$COMMENTS" | grep -qi "$pat"; then
+    HIT="$(echo "$COMMENTS" | grep -i "$pat" | head -3)"
+    MATCHES+=$'\n'"COMMENT MATCH ($pat): $HIT"
+  fi
+done
+
+# Check latest summary (the worker's final report)
+for pat in "${PATTERNS[@]}"; do
+  if echo "$LATEST_SUMMARY" | grep -qi "$pat"; then
+    HIT="$(echo "$LATEST_SUMMARY" | grep -i "$pat" | head -3)"
+    MATCHES+=$'\n'"SUMMARY MATCH ($pat): $HIT"
+  fi
+done
+
+# Check the most recent Diagnostics (blocked reason) — if it's review-required
+# the worker explicitly asked for review
+if [[ -n "$BLOCKED_REASON" ]]; then
+  MATCHES+=$'\n'"DIAGNOSTICS: $BLOCKED_REASON"
+fi
+
+if [[ -n "$MATCHES" ]]; then
+  echo "================================================================"
+  echo "safe-complete: REFUSING to complete $TASK_ID"
+  echo "================================================================"
+  echo
+  echo "Review-required content found in the card. The orchestrator must"
+  echo "either (a) address the findings, (b) escalate to the user, or"
+  echo "(c) explicitly archive with a documented decision. NEVER just"
+  echo "call 'hermes kanban complete' directly."
+  echo
+  echo "Matched content:"
+  echo "$MATCHES"
+  echo
+  echo "================================================================"
+  echo "If you have a justified reason to complete anyway, do so"
+  echo "manually with: hermes kanban complete $TASK_ID"
+  echo "(And document the reason as a comment on the card first.)"
+  echo "================================================================"
+  exit 1
+fi
+
+# Safe to complete
+echo "safe-complete: no review-required markers found in $TASK_ID comments."
+echo "Proceeding with: hermes kanban complete $TASK_ID"
+exec hermes kanban complete "$TASK_ID"
