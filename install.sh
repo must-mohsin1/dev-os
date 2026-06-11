@@ -99,6 +99,22 @@ for d in "$SRC"/agents/*/; do
   hermes profile install "$d" --force --yes >/dev/null 2>&1 && say "installed $name" || warn "install failed: $name"
 done
 
+# 4b) Shared doctrine skills — fan the repo seed into the three profiles ------------------------
+# Seed lives in skills/devops/kanban-worker/. Edit doctrine THERE, never in
+# ~/.hermes/profiles/ — this block overwrites profile copies (with a drift
+# warning) on every install/upgrade.
+if [ -d "$SRC/skills/devops/kanban-worker" ]; then
+  for p in devos devos-researcher devos-planner; do
+    [ -d "$HOME_DIR/profiles/$p" ] || continue
+    pdir="$HOME_DIR/profiles/$p/skills/devops/kanban-worker"
+    if [ -f "$pdir/SKILL.md" ] && ! diff -q "$pdir/SKILL.md" "$SRC/skills/devops/kanban-worker/SKILL.md" >/dev/null 2>&1; then
+      warn "overwriting drifted skill: $pdir/SKILL.md"
+    fi
+    mkdir -p "$pdir" && cp -R "$SRC/skills/devops/kanban-worker/." "$pdir/"
+    say "skills: $p += kanban-worker (seed)"
+  done
+fi
+
 # 5) Wire: descriptions, Grok tool, fallback key, runners ---------------------------------------
 hermes profile describe devos --text "Dev OS coordinator: routes goals to researcher/planner/devcrew, gates at the plan, tracks the board." >/dev/null 2>&1 || true
 hermes profile describe devos-researcher --text "Research specialist: Grok web research with parallel sub-searchers; cited briefs." >/dev/null 2>&1 || true
