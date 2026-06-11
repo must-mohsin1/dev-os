@@ -10,7 +10,7 @@ description: Diagnose and recover a stuck Hermes Kanban board. Use when user say
 
 Recover a stuck Hermes Kanban board. Two patterns cause most stalls:
 
-1. **Self-block with `review-required`** — worker ships code with passing tests, then self-blocks. Blocked parents are not `done`, so the dispatcher holds all downstream tasks. This is the #1 cause of stalls.
+1. **Self-block with `review-required`** — worker ships code with passing tests, then self-blocks. Blocked parents are not `done`, so the dispatcher holds all downstream tasks. Historically the #1 cause of stalls; rare after the v2.1.0 worker doctrine — and the blocks that remain are often genuine (see step 3b).
 2. **Non-spawnable assignee** — task is created or assigned to a profile that isn't registered as an active worker in this session. Dispatcher silently skips it with `Skipped (non-spawnable assignee — terminal lane, OK)`. This is the #2 cause and looks like the board isn't moving even though everything else is fine.
 
 This skill detects both, runs verification, and recovers the affected cards.
@@ -129,6 +129,8 @@ Post a short status to the user with:
 
 ## Pitfalls
 
+(In the bullets below, `complete` refers to the underlying `hermes kanban complete` semantics — safe-complete wraps that command, so its quirks apply through the guard too.)
+
 - **`hermes kanban daemon` is deprecated.** Do not run it. Dispatcher lives in the gateway. If `hermes gateway status` says the service is stale, report to the user — do not restart it without consent.
 - **`Spawned: 0` does not mean the board is dead.** It only means the dispatcher had nothing new to spawn this tick. Read all six counters together: Reclaimed, Crashed, Timed out, Stale, Auto-blocked, Promoted, Spawned.
 - **`complete` requires the task to be unblocked first.** If `complete` returns "not in done-able state", run `unblock` and retry.
@@ -147,7 +149,7 @@ Post a short status to the user with:
 
 ## Why this happens
 
-The doctrine is "workers must not self-block; they should ship and let the reviewer/QA lane pick up the work." This is now codified in `kanban-worker`'s "Coding task that needs human review (review-required)" section — workers should `kanban_complete` when their tests pass and the handoff is complete, not self-block. Until worker prompts are updated to enforce the new doctrine everywhere, kanban-doctor is the recovery path.
+The doctrine is "workers must not self-block; they should ship and let the reviewer/QA lane pick up the work." This is now codified in `kanban-worker`'s "Coding task that needs human review (review-required)" section — workers should `kanban_complete` when their tests pass and the handoff is complete, not self-block. The v2.1.0 worker doctrine and the framework KANBAN_GUIDANCE now codify this behaviour; kanban-doctor handles the remaining cases — older workers, stale profile copies, or edge conditions that still produce a false self-block.
 
 The non-spawnable-assignee pattern has a different cause: the workstream's creator (often the orchestrator or a worker) used a profile name that looks right but isn't registered as a worker in this session. This is a small but real footgun when the creator and the executor operate in different profile contexts.
 
@@ -224,7 +226,7 @@ Procedure (verified on control-plane item3, 2026-06-11):
    - Backward compat: <list of unchanged routes/contracts>"
    ```
 5. `git push origin <branch>` — capture the SHA. `git log --oneline -3` to confirm.
-6. Unblock + complete the integrator card with a comment containing the SHA, the test count, the file count, and the push result.
+6. Unblock + complete the integrator card with a comment containing the SHA, the test count, the file count, and the push result (complete via `safe-complete`, as in step 8).
 7. Archive the original integrator card body if it referenced scratch-workspace paths; the orchestrator's final-integration procedure supersedes it.
 
 This is the right call when: the workstream is "verify and ship" not "implement from scratch." The architecture is "do not redo implementation work" + the integrator's job is the final commit+push. If verification fails, you fall back to creating fix cards and re-dispatching; you don't try to commit a half-broken build.
@@ -253,6 +255,6 @@ If verification shows the issue is gone (or never existed), treat the finding as
 1. Post a comment on the reviewer's card explaining the verification: which command you ran, what it printed, why the finding doesn't apply.
 2. Unblock the reviewer with reason: "Of 8 findings: 6 were transient (verified <commands>). 2 real findings filed as fix cards <t_a, t_b>."
 3. Create fix cards for the real findings (if any), assigned to the appropriate dev profile.
-4. Complete the reviewer with a summary that the 2 real findings are tracked.
+4. Complete the reviewer with a summary that the 2 real findings are tracked (via `safe-complete`).
 
 This combines the kanban-orchestrator's "Stale QA fix cards (mid-write false positives)" pitfall with the same false-positive-recovery shape as the worker self-block pattern: verify → unblock with reason → comment → complete.
