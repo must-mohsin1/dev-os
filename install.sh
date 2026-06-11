@@ -93,11 +93,28 @@ if [ "$SKIP_OAUTH" != 1 ]; then
 else warn "Skipping OAuth — set up later: hermes auth add openai-codex --type oauth ; hermes auth add xai-oauth --type oauth"; fi
 
 # 4) Install the 3 agents -----------------------------------------------------------------------
+SKILLS_SNAP="$(mktemp -d)"
 for d in "$SRC"/agents/*/; do
   [ -f "$d/distribution.yaml" ] || continue
   name=$(grep -E '^name:' "$d/distribution.yaml" | head -1 | sed 's/^name:[[:space:]]*//' | tr -d '"'"'"' ')
+  [ -d "$HOME_DIR/profiles/$name/skills" ] && cp -a "$HOME_DIR/profiles/$name/skills" "$SKILLS_SNAP/$name"
   hermes profile install "$d" --force --yes >/dev/null 2>&1 && say "installed $name" || warn "install failed: $name"
 done
+
+# 4a) Preserve extras — `hermes profile install --force` replaces the profile's whole skills
+# tree, silently deleting skills the live profile gained outside this repo. Merge back every
+# top-level skill dir from the pre-install snapshot that the reinstall removed.
+# Guarded by scripts/probe-install-preserves-extras.sh.
+for s in "$SKILLS_SNAP"/*/; do
+  [ -d "$s" ] || continue
+  p="$(basename "$s")"
+  for k in "$s"*/; do
+    [ -d "$k" ] || continue
+    b="$(basename "$k")"
+    [ -d "$HOME_DIR/profiles/$p/skills/$b" ] || { mkdir -p "$HOME_DIR/profiles/$p/skills"; cp -a "$k" "$HOME_DIR/profiles/$p/skills/$b"; say "skills: $p += $b (preserved)"; }
+  done
+done
+rm -rf "$SKILLS_SNAP"
 
 # 4b) Shared doctrine skills — fan the repo seed into the three profiles ------------------------
 # Seed lives in skills/devops/kanban-worker/. Edit doctrine THERE, never in
