@@ -2,6 +2,7 @@
 # Dev OS setup — configures the `devos` coordinator profile per DEVOS.md.
 #   ./setup-devos.sh            full setup (runs the two OAuth logins)
 #   ./setup-devos.sh --config   config only (skip OAuth; safe to re-run)
+#   SETUP_DEVOS_MANUAL_PASTE=1  pass OAuth callback manually (browser-only remotes)
 # Policy: Codex main · OpenRouter fallback (gpt-5.5, deepseek-v4-flash) · Grok web search ·
 #         Discord gateway · NO Claude/Gemini.
 # NOTE: `hermes login` was removed in 0.14.x — credentials are managed via `hermes auth`.
@@ -9,18 +10,41 @@ set -euo pipefail
 PROFILE=devos
 HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 DO_OAUTH=1; [ "${1:-}" = "--config" ] && DO_OAUTH=0
+AUTH_ARGS=()
+remote_session(){ [ -n "${SSH_CONNECTION:-}" ] || [ -n "${SSH_CLIENT:-}" ] || [ -n "${SSH_TTY:-}" ]; }
+if [ "${SETUP_DEVOS_MANUAL_PASTE:-0}" = "1" ] || remote_session; then AUTH_ARGS+=(--manual-paste); fi
 say(){ printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
 warn(){ printf '\033[1;33m! %s\033[0m\n' "$*" >&2; }
 command -v hermes >/dev/null 2>&1 || { echo "hermes not found"; exit 1; }
 authed(){ hermes auth list 2>/dev/null | grep -qi "$1"; }
+auth_add_oauth() {
+  local provider=$1; shift
+  local log first_rc second_rc
+  log="$(mktemp)"
+  if hermes auth add "$provider" --type oauth "$@" 2>&1 | tee "$log"; then
+    rm -f "$log"
+    return 0
+  fi
+  first_rc="${PIPESTATUS[0]:-1}"
+  if grep -q "Remote session detected" "$log"; then
+    rm -f "$log"
+    printf '%s\n' ">> Retrying $provider with --manual-paste..."
+    if hermes auth add "$provider" --type oauth --manual-paste; then return 0; fi
+    second_rc=$?
+    return "$second_rc"
+  fi
+  rm -f "$log"
+  return "$first_rc"
+}
 
 # 1) Account OAuth (your action — opens a browser login on this machine)
 if [ "$DO_OAUTH" = "1" ]; then
   say "Codex login (main model) — use the COMPANY account first; if it fails, personal."
-  authed "openai-codex" || hermes auth add openai-codex --type oauth || \
+  if [ "${AUTH_ARGS[*]:-}" != "" ]; then say "Using manual-paste OAuth flow (remote/SSH session detected)."; fi
+  authed "openai-codex" || auth_add_oauth "openai-codex" "${AUTH_ARGS[@]}" || \
     warn "Codex OAuth failed — Dev OS runs on OpenRouter gpt-5.5 (policy-allowed fallback)."
   say "Grok login (web search) — SuperGrok / Premium+ account."
-  authed "xai" || hermes auth add xai-oauth --type oauth || \
+  authed "xai" || auth_add_oauth "xai-oauth" "${AUTH_ARGS[@]}" || \
     warn "Grok OAuth failed — web search stays off until xAI creds exist (or: hermes auth add xai --type api-key)."
 fi
 
