@@ -85,13 +85,16 @@ fixes. Auditing them against the responsibility model:
    overwrites the kanban-worker and decompose-goal patches. Only Fix 3
    (dev-os `f7a3700`) is durable.
 
-5. **Bidirectional drift with pending data loss.** The live devos profile
-   copy of kanban-orchestrator (v3.0.0) carries a "Build-watching" section
-   and two reference docs (`build-watching-playbook.md`,
-   `structural-fixes-2026-06-11.md`) that exist only in the profile; the
-   committed 3.4.0 has sections the profile lacks and lists five
-   `control-plane-item*.md` references that exist nowhere. The next dev-os
-   upgrade destroys the live-only content.
+5. **Bidirectional drift — and a lossy reverse-sync already happened.** The
+   live devos profile copy of kanban-orchestrator (v3.0.0 lineage) carries a
+   "Build-watching" section and two reference docs
+   (`build-watching-playbook.md`, `structural-fixes-2026-06-11.md`) that were
+   never committed. Mid-audit, commit `10e90a1` (safe-complete guard) also
+   replaced the repo's 3.4.0 SKILL.md (424 lines) with the 3.0.0-lineage copy
+   (290 lines) — dropping the References block, Step 0.5 (board pinning), and
+   ~134 lines of item2–item5 recovery doctrine from HEAD (recoverable from
+   `f7a3700`), while still not committing the two reference docs the new text
+   points to. Reconciliation is now a three-way merge.
 
 6. **Version strings are useless for drift detection today:** all 13
    kanban-worker copies claim 2.0.0 while carrying two different doctrines.
@@ -194,10 +197,13 @@ TN (impl) ──┘
   lockfiles, shared config) belong only to the integrator card.
 - Bump version.
 
-**kanban-orchestrator → v3.5.0** (merge repo 3.4.0 + live profile extras):
+**kanban-orchestrator → v3.5.0** (three-way merge: `f7a3700`'s 3.4.0 content
++ HEAD's 3.0.0+guard content + live profile extras):
 
-- Merge IN the live-only "Build-watching" section and both reference files —
-  this must land before any installer runs again.
+- Restore the 3.4.0-era sections dropped by `10e90a1` (References, Step 0.5,
+  planner-budget-trap and stale-summary recoveries, CLI footguns) from git
+  history; keep HEAD's safe-complete wiring and Build-watching section; commit
+  both reference files. This must land before any installer runs again.
 - Delete the "make Reviewer/QA/Integrator siblings gated on the brief" advice
   (tombstone: it was a workaround for routine self-blocks, which the L0+L3
   fix eliminates). Keep D3-first as the explicit verify-and-ship exception.
@@ -226,6 +232,25 @@ into two branches:
   human on Discord and leave the card blocked; the human's unblock is the
   resolution. Update the "#1 cause of stalls" framing to past tense with a
   pointer to the doctrine change.
+
+### 2b. Enforcement: guards over prose
+
+Commit `10e90a1` proved the core weakness of doctrine-only fixes: the
+orchestrator violated the rubber-stamp rule **4 minutes after it was
+written**. Prose rules drift; mechanical guards don't. The design adopts this
+as a principle — every MUST rule gets a guard where feasible:
+
+- **Keep `scripts/safe-complete`** (exists) as the mandatory completion path
+  for the orchestrator; the v3.5.0 skill text instructs "never call
+  `hermes kanban complete` directly." Tighten its marker list — generic
+  patterns ("needs review", "option A", "option B") will false-positive on
+  ordinary research/decision cards; scope them to gate cards or pair them
+  with the `review-required:` prefix.
+- **Follow-up (engine-level, pairs with the L0 patch):** a completion gate in
+  hermes-agent's `kanban_complete`/CLI for cards with unresolved
+  review-required content, and validation in `kanban_block` rejecting
+  `review-required:` reasons that name no concrete concern category. Wrappers
+  can be bypassed; the engine can't.
 
 ### 3. Version-bump rule
 
