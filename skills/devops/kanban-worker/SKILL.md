@@ -1,7 +1,7 @@
 ---
 name: kanban-worker
 description: Pitfalls, examples, and edge cases for Hermes Kanban workers. The lifecycle itself is auto-injected into every worker's system prompt as KANBAN_GUIDANCE (from agent/prompt_builder.py); this skill is what you load when you want deeper detail on specific scenarios.
-version: 2.2.0
+version: 2.4.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -120,6 +120,34 @@ kanban_complete(
 
 Shape `metadata` so downstream parsers (reviewers, aggregators, schedulers) can use it without re-reading your prose.
 
+## Evidence artifact — mandatory for verification cards
+
+If your card is a review, QA, or integration card — or ANY card whose summary
+claims tests ran or passed, in any phrasing ("tests pass", "suite green",
+"27/27", "verified working") — write the proof to disk BEFORE calling
+`kanban_complete`:
+
+1. Capture, don't transcribe: run your verification through `tee` so the log is
+   the real output, e.g.
+   `pytest -q 2>&1 | tee "$HERMES_KANBAN_WORKSPACE/test_run.$HERMES_KANBAN_TASK.log"; echo "exit=$?" >> ...same file`.
+   The file MUST contain the exact command line(s), the full unedited output,
+   and the exit code line. The task-id suffix prevents collisions on shared
+   `dir:` workspaces and stops a worker citing a stale log another card wrote.
+2. Cite the resolved absolute path in your completion summary (resolve the
+   variables — downstream readers run in different workspaces).
+3. Mirror a digest into a `kanban_comment` (last ~10 lines + the exit line):
+   `scratch` workspaces are GC'd at archive, so the comment is the durable copy
+   an auditor can still read after cleanup.
+
+A verification summary with no evidence artifact, a 0-byte artifact, or an
+artifact with no command/exit lines is unverified — the orchestrator must treat
+the claim as false until proven (kernel-side completion gating is item 10 T-F;
+until it lands, enforcement is the orchestrator's job, so make the evidence
+easy to audit). A hand-typed "1987 passed" summary file is fabrication, and the
+parent-commit re-run rule from Classify-and-file applies to auditing it. (This
+rule exists because the item 9 build shipped a 0-byte QA_VERDICT.md while the
+summary claimed a full pass.)
+
 ## Claiming cards you actually created
 
 If your run produced new kanban tasks (via `kanban_create`), pass the ids in `created_cards` on `kanban_complete`. The kernel verifies each id exists and was created by your profile; any phantom id blocks the completion with an error listing what went wrong, and the rejected attempt is permanently recorded on the task's event log. **Only list ids you captured from a successful `kanban_create` return value — never invent ids from prose, never paste ids from earlier runs, never claim cards another worker created.**
@@ -209,7 +237,7 @@ Bad heartbeats: `"still working"`, empty notes, sub-second intervals. Every few 
 
 If you open the task and `kanban_show` returns `runs: [...]` with one or more closed runs, you're a retry. The prior runs' `outcome` / `summary` / `error` tell you what didn't work. Don't repeat that path. Typical retry diagnostics:
 
-- `outcome: "timed_out"` — the previous attempt hit `max_runtime_seconds`. You may need to chunk the work or shorten it.
+- `outcome: "timed_out"` — two distinct causes; read the run's `error` string to tell them apart. (a) Wall-clock: the attempt hit `max_runtime_seconds` — chunk or shorten the work. (b) Iteration budget: `error` says "Iteration budget exhausted (N/N)" — the worker ran out of `max_turns`, not time; re-planning the same breadth will exhaust again, so narrow scope or inline the prior attempt's findings instead of re-gathering.
 - `outcome: "crashed"` — OOM or segfault. Reduce memory footprint.
 - `outcome: "spawn_failed"` + `error: "..."` — usually a profile config issue (missing credential, bad PATH). Ask the human via `kanban_block` instead of retrying blindly.
 - `outcome: "reclaimed"` + `summary: "task archived..."` — operator archived the task out from under the previous run; you probably shouldn't be running at all, check status carefully.

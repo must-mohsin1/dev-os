@@ -1,7 +1,7 @@
 ---
 name: write-spec
 description: "Turn a goal + research brief into an approval-ready spec with checkable acceptance criteria."
-version: 1.0.0
+version: 1.1.0
 author: dev-os
 license: MIT
 platforms: [linux, macos, windows]
@@ -31,5 +31,16 @@ Use to convert a goal (+ the researcher's brief) into a spec a human can approve
 - **YAGNI.** Cut every requirement not needed for the goal.
 - If the goal hides multiple independent deliverables, split into separate specs.
 
+## Spec retention (mandatory)
+/tmp is not storage — specs written only to /tmp have been lost between runs.
+After spec-critic passes, copy the spec to the durable board location and cite
+that path in your completion summary:
+
+    mkdir -p ~/.hermes/kanban/boards/${HERMES_KANBAN_BOARD:-control-plane}/specs
+    cp <spec>.md ~/.hermes/kanban/boards/${HERMES_KANBAN_BOARD:-control-plane}/specs/<item>-spec.md
+
+A completion summary that cites only a /tmp path is incomplete — the durable
+path is the deliverable.
+
 ## Done when
-Every acceptance criterion is checkable, scope is explicit, and `spec-critic` has passed.
+Every acceptance criterion is checkable, scope is explicit, `spec-critic` has passed, and the spec is copied to the durable `specs/` dir with that path cited in your summary.
