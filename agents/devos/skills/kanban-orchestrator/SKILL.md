@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.6.0
+version: 3.8.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -195,7 +195,7 @@ are required.
 
 **Inventing profile names that don't exist.** The dispatcher silently fails to spawn unknown assignees — the card just sits in `ready` forever. Always assign to a profile from your Step 0 discovery; ask the user if you're unsure.
 
-**Planner budget trap — archive + re-queue with pre-loaded evidence.** The "devos-planner iteration budget trap" pitfall above gives four mitigations (a)-(d). When (b) doesn't apply — i.e. the planner burned its 90-iteration budget on EVIDENCE GATHERING and never wrote the spec — the right move is to archive the failed card and re-queue a tighter card with the planner's findings inlined. Worked procedure (verified on control-plane item3):
+**Planner budget trap — archive + re-queue with pre-loaded evidence.** The "devos-planner iteration budget trap" pitfall above gives four mitigations (a)-(d). When (b) doesn't apply — i.e. the planner burned its max_turns budget (agents/planner/config.yaml — currently 40) on EVIDENCE GATHERING and never wrote the spec — the right move is to archive the failed card and re-queue a tighter card with the planner's findings inlined. Worked procedure (verified on control-plane item3):
 
 1. `hermes kanban --board <slug> log <failed_card_id> --tail 200` — capture the planner's evidence findings (file paths, current-state observations, design tensions it identified). These are real; don't lose them.
 2. `hermes kanban archive <failed_card_id>`. If a downstream gate card (e.g. human-approve) is parented on the failed card, archive that too — you'll recreate it parented on the new plan card.
@@ -206,7 +206,7 @@ are required.
 7. Recreate the gate card parented on the new plan: `hermes kanban create "Item3-approve: ..." --assignee devos --parent <new_plan_id> --initial-status blocked`.
 8. `hermes kanban --board <slug> dispatch`. Watch `Spawned: N` — N>0 means the new plan is claimed.
 
-Why this works: the prior run's evidence IS the deliverable for the gather phase; the new run only needs to execute the write phase. Splitting "gather" and "write" across two planner runs is faster than asking one run to do both within 90 iterations.
+Why this works: the prior run's evidence IS the deliverable for the gather phase; the new run only needs to execute the write phase. Splitting "gather" and "write" across two planner runs is faster than asking one run to do both within one max_turns budget.
 
 **Planner stale-summary cache — file exists but LLM keeps re-posting "research brief missing."** Distinct from the budget-trap above. The planner successfully writes the spec to disk (e.g. `/tmp/cp/item-X-spec.md`, 27KB, lines correct), but its LLM context has a cached "research brief missing" or "waiting for upstream" comment that it keeps re-posting as the "Latest summary" in its heartbeat. The card is `running`, the worker is alive, the file is on disk — but every dispatcher tick shows the same stale text. Seen on control-plane item4: the first planner attempt looped on "Research brief missing: /tmp/cp/item4-agent-catalog-research.md doesn't exist yet. Upstream researcher task t_X is still running." even after the researcher had produced the file 5+ minutes earlier. The dispatcher's "I see the card is running" signal was correct; the planner was just stuck in a stale-state comment loop. Detection:
 - Card stays `running` for > 5 min with the same `Latest summary` text byte-for-byte
@@ -219,7 +219,7 @@ Recovery (don't try to unstick the running worker — they can't see the new fil
 3. `hermes kanban comment <planner_id> "<path> IS available (N lines, M bytes, written at <timestamp> by <upstream_id>). Worker card is being closed by orchestrator; proceed to read it and write the spec."` — the comment is for the audit trail, not for the worker (they won't see it).
 4. `hermes kanban complete <planner_id>` — single id. May return `cannot complete (unknown id or terminal state)` if the dispatcher's stale-cache reclaimed it first; verify with `hermes kanban list | grep <id>` to confirm it's actually done.
 5. Archive the stale card if complete refused: `hermes kanban archive <planner_id>`.
-6. Create the replacement plan card with a body that EXPLICITLY references the existing artifact: e.g. "Read /tmp/cp/item4-agent-catalog-research.md (486 lines, 32KB) — DO NOT check upstream state, the researcher card is closed. If you hit the 90-iteration budget, write what you can to /tmp/cp/item4-agent-catalog-spec.md. Partial output is salvageable." This body text is what makes the new run succeed — it removes the upstream-check step that caused the original loop.
+6. Create the replacement plan card with a body that EXPLICITLY references the existing artifact: e.g. "Read /tmp/cp/item4-agent-catalog-research.md (486 lines, 32KB) — DO NOT check upstream state, the researcher card is closed. If you hit the max_turns budget, write what you can to /tmp/cp/item4-agent-catalog-spec.md. Partial output is salvageable." This body text is what makes the new run succeed — it removes the upstream-check step that caused the original loop.
 7. Wire the new plan card: `hermes kanban link <research_id> <new_plan_id>` (remember FIRST_ARG = PARENT, so research is parent). Recreate the gate parented on the new plan if it was already linked to the old one: archive the gate, recreate with `hermes kanban create "...approve..." --parent <new_plan_id> --initial-status blocked`.
 8. `hermes kanban --board <slug> dispatch`. Verify `Spawned: N > 0`.
 
@@ -599,3 +599,17 @@ straight to one when you need it.
 - `references/item6-build-learnings.md` — three concrete recovery patterns from the item6 build: worker test counts lie, terminal "hang" vs real pytest hang (tee buffers progress), Next.js route conflict recovery (mv to .bak).
 - `references/research-body-template.md` — the v2 research body template with the CRITICAL tool-inventory block (default for new research cards).
 - `scripts/safe-complete` — the runnable guard for the rubber-stamp rule. Use this INSTEAD of `hermes kanban complete` for every card. It scans the card's recent comments for review-required markers and refuses to complete if any are found.
+
+## Spec retention — /tmp is not storage (added 2026-06-12)
+
+Until the entry-point unification lands (item 10 T-C), this profile sometimes
+authors or relays specs itself. Whoever writes a spec or research brief MUST
+retain it durably: the canonical recipe (mkdir + cp into
+~/.hermes/kanban/boards/$HERMES_KANBAN_BOARD/specs) lives in the planner's
+write-spec skill — that skill owns the commands; this section owns the gate
+rule:
+
+A gate card whose spec exists only under /tmp is not approvable — the operator
+may be reading a path that a reboot already deleted. The same applies to
+research briefs you inline into re-queued planner cards: cite the durable copy,
+not the /tmp original.

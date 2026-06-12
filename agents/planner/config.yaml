@@ -10,7 +10,9 @@ toolsets:
   - hermes-cli
 agent:
   reasoning_effort: gpt-5.3-codex-spark
-  max_turns: 90
+  # 40 turns: successful specs finish in ~150-440s well under this; the 13 budget-exhaustion failures were 90-turn gather loops. Fail fast, re-queue with evidence inlined (kanban-orchestrator budget-trap procedure).
+  # Wall-clock caps for dispatched workers are per-task max_runtime_seconds (item 10 scope) — agent.gateway_timeout only governs gateway chat-session inactivity, NOT kanban workers, so it is deliberately not set here.
+  max_turns: 40
 fallback_providers:
   - { provider: openrouter, model: deepseek/deepseek-v4-pro, base_url: https://openrouter.ai/api/v1, api_mode: chat_completions }
   - { provider: openrouter, model: openai/gpt-5.5, base_url: https://openrouter.ai/api/v1, api_mode: chat_completions }

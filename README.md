@@ -68,6 +68,11 @@ hermes gateway start                                     # then talk to devos on
 ```
 Artifacts land in `~/.dev-os-runs/<goal>/` (`brief.md`, `spec.md`, `report.md`).
 
+**Runs fail fast.** If the research or plan step fails — or exits clean but writes no artifact — the
+run stops right there and blocks its kanban tracking card with the output tail, so you never get a
+provider error log dressed up as a brief or spec. Re-runs start clean: stale artifacts from a
+previous attempt are deleted before step 1.
+
 **Every project gets its own kanban board** — auto-named after the repo (`/path/to/MunafaIQ` → board
 `munafaiq`), so work never mixes. Inspect with `hermes kanban --board <name> ls`; override the name
 with `DEVCREW_BOARD=myname`.
@@ -119,5 +124,5 @@ One human gate at the plan (`--no-gate` removes it); destructive build steps sta
 isolated workspaces per task; an auditable kanban event stream.
 
 ## License
-MIT — see [LICENSE](LICENSE). Design notes: [`docs/superpowers/specs/`](docs/superpowers/specs/).
+MIT — see [LICENSE](LICENSE). Release history: [CHANGELOG.md](CHANGELOG.md). Design notes: [`docs/superpowers/specs/`](docs/superpowers/specs/).
 Build team: **[hermes-devcrew →](https://github.com/must-mohsin1/hermes-devcrew)**
