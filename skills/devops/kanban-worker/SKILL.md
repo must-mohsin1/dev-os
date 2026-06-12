@@ -162,6 +162,39 @@ kanban_block(reason="Rate limit key choice: IP (simple, NAT-unsafe) or user_id (
 
 The block message is what appears in the dashboard / gateway notifier. The comment is the deeper context a human reads when they open the task.
 
+## Classify and file — never bare-block
+
+When verification (review / QA / integration) finds a failing test or defect,
+classify it BEFORE doing anything else. Three classes, three routes:
+
+1. **In-scope** — introduced by this card's changes. Fix it in this card,
+   re-run the failing test, attach the pass output as evidence.
+2. **Pre-existing** — present before this card's changes. File a fix card on
+   the same board (payload below), comment this card with the fix-card ID,
+   and CONTINUE. A pre-existing defect never blocks this card.
+3. **Cross-item** — architectural, spans items. File a roadmap follow-up,
+   link it, continue.
+
+**Evidence rule (mandatory for class 2):** "pre-existing" is proven, not
+asserted. Re-run the exact failing test against the pre-card state (stash
+this card's diff or check out the parent commit) and paste BOTH outputs —
+failing identically before and after — on the fix card. If it passes on the
+pre-card state, it is class 1: yours. No evidence, no class-2 claim.
+
+**Fix-card minimum payload:** failing test name(s), error excerpt (≤20
+lines), suspected file:line, the before/after evidence, link to this card.
+
+**The only legitimate self-block:** a class-1 failure you cannot fix within
+your turn budget — block WITH the classification table and evidence attached.
+A bare self-block (no classification, no evidence, no fix-card IDs) is a
+protocol violation.
+
+**Why this exists:** the worker-claim-lies pattern (item 6+item 7+item 9
+builds) showed that reviewers/QA/integrators can fabricate self-blocks for
+issues they did not actually verify. The classify-and-file doctrine makes the
+worker do the verification work (the parent-commit re-run) and the
+classification is the receipt.
+
 ## Heartbeats worth sending
 
 Good heartbeats name progress: `"epoch 12/50, loss 0.31"`, `"scanned 1.2M/2.4M rows"`, `"uploaded 47/120 videos"`.
