@@ -1,7 +1,7 @@
 ---
 name: kanban-worker
 description: Pitfalls, examples, and edge cases for Hermes Kanban workers. The lifecycle itself is auto-injected into every worker's system prompt as KANBAN_GUIDANCE (from agent/prompt_builder.py); this skill is what you load when you want deeper detail on specific scenarios.
-version: 2.1.0
+version: 2.2.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -184,8 +184,12 @@ pre-card state, it is class 1: yours. No evidence, no class-2 claim.
 **Fix-card minimum payload:** failing test name(s), error excerpt (≤20
 lines), suspected file:line, the before/after evidence, link to this card.
 
-**The only legitimate self-block:** a class-1 failure you cannot fix within
-your turn budget — block WITH the classification table and evidence attached.
+**The only legitimate self-block from verification work:** a class-1 failure
+you cannot fix within your turn budget — block WITH the classification table
+and evidence attached. (The four genuine human-only concerns above —
+security/credential, schema/migration, external-network actions, task
+ambiguity — remain valid block reasons at handoff, with the concrete concern
+named; this rule governs verification findings, not those escalations.)
 A bare self-block (no classification, no evidence, no fix-card IDs) is a
 protocol violation.
 
