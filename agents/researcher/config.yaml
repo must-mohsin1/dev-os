@@ -11,7 +11,9 @@ toolsets:
   - hermes-cli
 agent:
   reasoning_effort: grok-4.3
-  max_turns: 90
+  # 60 turns: research briefs complete well inside this (Item10 research ran under it).
+  # Wall-clock caps for dispatched workers are per-task max_runtime_seconds (item 10 scope) — agent.gateway_timeout only governs gateway chat-session inactivity, NOT kanban workers, so it is deliberately not set here.
+  max_turns: 60
 x_search:
   model: grok-4.3
 fallback_providers:
