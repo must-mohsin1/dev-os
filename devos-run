@@ -32,20 +32,41 @@ hermes kanban init >/dev/null 2>&1 || true
 hermes kanban boards create "$BOARD" >/dev/null 2>&1 || true
 TRACK=$(hermes kanban --board "$BOARD" create "goal: $GOAL" --assignee devos 2>/dev/null | grep -oE 't_[a-z0-9]+' | head -1 || true)
 note(){ [ -n "$TRACK" ] && hermes kanban --board "$BOARD" comment "$TRACK" "$1" >/dev/null 2>&1 || true; }
+# The write-spec doctrine derives the durable specs dir from this; without it
+# a dispatchless planner run would file specs under the default board.
+export HERMES_KANBAN_BOARD="$BOARD"
+# The run dir is keyed by goal slug and persists across runs. Stale artifacts
+# from a previous attempt would satisfy the freshness checks below, so this
+# run must start clean and produce its own brief/spec.
+rm -f "$RUN/brief.md" "$RUN/spec.md" "$RUN/report.md"
+# die_step <note-msg> <banner> <outfile> — hard-stop a pipeline step: comment +
+# block the tracking card (so the board shows the failure, not an open card
+# forever), print the output tail, exit 1.
+die_step(){
+  note "$1"
+  [ -n "$TRACK" ] && hermes kanban --board "$BOARD" block "$TRACK" "$1" >/dev/null 2>&1 || true
+  echo "✗ $2 — tail of $3:" >&2
+  tail -n 25 "$3" >&2
+  exit 1
+}
 
 # 1) RESEARCH (devos-researcher / Grok) -----------------------------------------------------------
 say "1/5 research (Grok$DEEP_LABEL)"
 note "research started"
 DEPTH=$([ "$DEEP" = 1 ] && echo "Do DEEP research: switch x_search.model to grok-4.3 and fan out up to 3 parallel sub-searchers." || echo "Quick research is fine.")
-hermes -p devos-researcher --yolo -z "Research this goal with Grok x_search. $DEPTH Write a cited brief to the file $RUN/brief.md with sections: Answer, Key findings (each with a source URL), Disagreements/gaps, Confidence (High/Med/Low). GOAL: $GOAL.${REPO:+ Target repo: $REPO.}" > "$RUN/research.out" 2>&1 || true
-[ -s "$RUN/brief.md" ] || cp "$RUN/research.out" "$RUN/brief.md"
+hermes -p devos-researcher --yolo -z "Research this goal with Grok x_search. $DEPTH Write a cited brief to the file $RUN/brief.md with sections: Answer, Key findings (each with a source URL), Disagreements/gaps, Confidence (High/Med/Low). GOAL: $GOAL.${REPO:+ Target repo: $REPO.}" > "$RUN/research.out" 2>&1 \
+  || die_step "research FAILED" "research step failed" "$RUN/research.out"
+[ -s "$RUN/brief.md" ] \
+  || die_step "research produced no brief" "researcher exited 0 but $RUN/brief.md is missing/empty (a provider error log is NOT a brief)" "$RUN/research.out"
 say "   brief → $RUN/brief.md"
 
 # 2) PLAN (devos-planner / Codex) -----------------------------------------------------------------
 say "2/5 plan (Codex)"
 note "planning started"
-hermes -p devos-planner --yolo -z "Read the research brief at $RUN/brief.md. Write an approval-ready spec to $RUN/spec.md with sections: Problem, Goal, Non-goals, Constraints, Acceptance criteria (each checkable), Risks. Then run your spec-critic pass and fix issues inline. GOAL: $GOAL." > "$RUN/plan.out" 2>&1 || true
-[ -s "$RUN/spec.md" ] || cp "$RUN/plan.out" "$RUN/spec.md"
+hermes -p devos-planner --yolo -z "Read the research brief at $RUN/brief.md. Write an approval-ready spec to $RUN/spec.md with sections: Problem, Goal, Non-goals, Constraints, Acceptance criteria (each checkable), Risks. Then run your spec-critic pass and fix issues inline. GOAL: $GOAL." > "$RUN/plan.out" 2>&1 \
+  || die_step "planning FAILED" "plan step failed" "$RUN/plan.out"
+[ -s "$RUN/spec.md" ] \
+  || die_step "planning produced no spec" "planner exited 0 but $RUN/spec.md is missing/empty (a planner error log is NOT a spec)" "$RUN/plan.out"
 say "   spec → $RUN/spec.md"
 
 # 3) GATE -----------------------------------------------------------------------------------------
@@ -75,6 +96,9 @@ fi
 
 # 5) REPORT (devos / Codex) -----------------------------------------------------------------------
 say "5/5 report"
+# Report is best-effort and non-gating: the build is already dispatched, so a
+# failed reporter must not fail the run — the error-log fallback is acceptable
+# HERE (and only here; brief/spec above hard-stop instead).
 hermes -p devos --yolo -z "Summarize this run as a 1-3-1 brief and write $RUN/report.md. What was researched ($RUN/brief.md), planned ($RUN/spec.md), and dispatched to devcrew for GOAL: $GOAL." > "$RUN/report.out" 2>&1 || true
 [ -s "$RUN/report.md" ] || cp "$RUN/report.out" "$RUN/report.md"
 note "reported"; [ -n "$TRACK" ] && hermes kanban --board "$BOARD" complete "$TRACK" >/dev/null 2>&1 || true
