@@ -5,3 +5,7 @@
 ruvector.db
 *.log
 .env
+
+# RuVector MCP local memory graph (per-machine, not source)
+agentdb.rvf
+agentdb.rvf.lock
