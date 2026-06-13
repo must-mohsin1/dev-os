@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.8.0
+version: 3.10.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -101,6 +101,67 @@ Examples of prompts that should fan out (using placeholder profile names — sub
 Words like "also," "finally," or "and" do not automatically imply a dependency. They often mean "make sure this is covered before reporting back." Only link tasks when one card cannot start until another card's output exists.
 
 Show the graph to the user before creating cards. Let them correct it — including which actual profile name should own each lane.
+
+### Step 2.5 — Size every card to the assignee's turn budget
+
+Workers run under hard `max_turns` iteration caps (per-profile `agent.max_turns`
+— on this fleet: backend-dev/integrator/qa 80, reviewer 70, other devcrew 60,
+planner 40, researcher 60; verify with `grep max_turns
+~/.hermes/profiles/<name>/config.yaml` if unsure). A card whose plausible work
+exceeds its assignee's budget doesn't fail fast — it burns the whole budget,
+dies mid-work with `timed_out`, ticks the failure breaker, and needs a guided
+retry. On the item-10 build, 4 of 7 implementation cards exhausted their budget
+this way; every one was a card sized to "one work item" instead of "one budget."
+
+Budget arithmetic while sketching the graph:
+
+- Everything costs turns: orientation (~3-5), each read/edit/test cycle
+  (~3-6 per acceptance criterion), full-suite runs (1-2 each), commit +
+  evidence artifact + completion protocol (~5).
+- Rule of thumb: one acceptance criterion with code + test ≈ 8-15 turns.
+- **If the estimate exceeds ~2/3 of the assignee's max_turns, SPLIT the card.**
+  The remaining 1/3 is headroom for surprises and the completion protocol —
+  not slack to plan into.
+- Mega-card signals that always mean split: >5 acceptance criteria, >2 modules
+  touched, "and" joining unrelated deliverables in the title.
+
+Split by module or by criterion group, and make the interface explicit. When
+the halves need a shared contract (file paths, function signatures, data
+shapes), create a `devcrew-architect` card to write that contract first and
+parent both implementation cards on it — that is the architect's job in this
+fleet; don't leave it idle while implementation cards carry implicit
+interfaces.
+
+**Sole-decomposer rule:** exactly one decomposition pass per build — yours.
+Never create a "decompose this spec" card for another profile on top of your
+own graph; double decomposition produces a second, unapproved task set
+(verified failure mode in the bridge stack: planner decomposes at plan time, a
+build-side architect re-decomposes at build time, and the human-approved set
+is not the set that runs). Architect cards design contracts BETWEEN cards you
+created; they do not create the card graph.
+
+**Same-tree parallelism rule:** implementation cards that share a `dir:`
+workspace on the same repo MUST NOT run concurrently. Do not rely on
+same-profile serialization — the dispatcher spawns same-profile siblings in
+PARALLEL (verified on the item-11 build: one tick spawned 4 devcrew-backend-dev
+workers into the same kernel checkout; two of the cards edited the same file).
+Two workers in one working tree see — and can commit or destroy — each other's
+in-flight edits. Either CHAIN the cards (each parented on the previous, in
+least-coupled-first order) or give each card a `worktree` workspace and make
+the integrator merge the branches. Chaining is the default whenever the cards
+plausibly touch overlapping files.
+
+**Decomposition retries must be idempotent — reconcile, don't re-create.** If
+your decompose card is retried (reclaim, crash, budget), the prior attempt may
+have already created part of the graph. FIRST list the board's open cards for
+this item and reconcile: adopt the correct ones, explicitly annotate-supersede
+or archive the wrong ones, create only what is missing. The item-11 build's
+decomposer created two full graphs back-to-back; the duplicate lanes spawned 7
+throwaway workers. Damage was contained only because the decomposer annotated
+the duplicates as "superseded" and the spawned workers honored the annotation
+by no-op-completing — so if you DO supersede a card, say so ON the card; that
+annotation is what turns a duplicate worker into a 40-second no-op instead of
+a full duplicate build.
 
 ### Step 3 — Create tasks and link
 
@@ -208,6 +269,15 @@ are required.
 
 Why this works: the prior run's evidence IS the deliverable for the gather phase; the new run only needs to execute the write phase. Splitting "gather" and "write" across two planner runs is faster than asking one run to do both within one max_turns budget.
 
+**Budget-exhausted worker cards — ALWAYS re-queue with a guided-retry comment.** The planner budget-trap above is one instance of a general rule. When any worker run ends `timed_out` with "Iteration budget exhausted (N/N)" (check `hermes kanban runs <id>` — wall-clock timeouts read differently and need chunking instead), the card usually holds real partial work in its workspace. A bare re-dispatch spawns a fresh worker with no memory of the prior run: it re-explores from zero and exhausts the same budget the same way. Before re-dispatching, post a structured comment on the card (workers read the thread on spawn — the comment IS the context injection):
+
+1. `RETRY GUIDANCE (run N exhausted its budget)` header so the worker can't miss it.
+2. Inventory of what already landed — run `git -C <workspace> status --short` and `git -C <workspace> log --oneline -5` yourself and paste the output, plus the prior run's summary if it left one.
+3. Which acceptance criteria are DONE vs REMAINING, as two explicit lists.
+4. The directive: "Do NOT re-explore or re-derive the plan. Trust the inventory above, finish only the REMAINING list, commit early, and complete with evidence."
+
+Then re-dispatch. Verified on the item-10 build: 4 of 4 budget-exhausted cards completed on their first guided retry, while every bare exhaustion before guidance had burned its full budget re-exploring. Write the guidance immediately when you notice the exhaustion — the workspace inventory is cheap to capture and the next dispatch tick may spawn the retry before you come back.
+
 **Planner stale-summary cache — file exists but LLM keeps re-posting "research brief missing."** Distinct from the budget-trap above. The planner successfully writes the spec to disk (e.g. `/tmp/cp/item-X-spec.md`, 27KB, lines correct), but its LLM context has a cached "research brief missing" or "waiting for upstream" comment that it keeps re-posting as the "Latest summary" in its heartbeat. The card is `running`, the worker is alive, the file is on disk — but every dispatcher tick shows the same stale text. Seen on control-plane item4: the first planner attempt looped on "Research brief missing: /tmp/cp/item4-agent-catalog-research.md doesn't exist yet. Upstream researcher task t_X is still running." even after the researcher had produced the file 5+ minutes earlier. The dispatcher's "I see the card is running" signal was correct; the planner was just stuck in a stale-state comment loop. Detection:
 - Card stays `running` for > 5 min with the same `Latest summary` text byte-for-byte
 - The expected upstream artifact EXISTS on disk and is reasonable size
@@ -253,6 +323,16 @@ finishes with N blocking findings:
 4. Complete the gate card via `scripts/safe-complete`. Its deliverable is the
    review, which now exists; keeping it open adds rubber-stamp pressure
    without protection.
+5. **Late fix cards (gate filed them while the integrator was already running
+   or done) do NOT just merge into the backlog.** The integration evidence
+   predates the fixes, so the item is not actually integrated. Land the fix
+   cards, then create a follow-up integration card parented on them to re-run
+   the integration evidence on the fixed tree. The worker-side sweep rule
+   (kanban-worker v2.5.0) makes integrators check for open fix cards before
+   completing, but it can't catch cards filed after the integrator closed —
+   that case is yours. (Verified on the item-10 build: QA filed two fix cards
+   after the integrator promoted; the fixes were completed but never
+   committed until the operator hand-landed them.)
 
 **Argument order for links.** `kanban_link(parent_id=..., child_id=...)` — parent first. Mixing them up demotes the wrong task to `todo`.
 
@@ -315,8 +395,8 @@ Key corrections captured 2026-06-11 on control-plane item5:
   `stats` alone. Check 4 signals: worker process alive (`ps`),
   workspace touched recently, code actually changed (`grep`),
   budget state (`hermes kanban runs`). If the worker is alive
-  but the code is done, force-complete — don't wait for the
-  90-iter budget.
+  but the code is done, force-complete — don't wait for it to
+  burn the rest of its max_turns budget.
 - **Per-card `--skill` flag is the structural fix for researcher
   self-rejects.** `hermes kanban create` supports repeatable
   `--skill <name>` to force-load a skill into the worker's
