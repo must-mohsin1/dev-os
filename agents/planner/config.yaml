@@ -9,7 +9,9 @@ model:
 toolsets:
   - hermes-cli
 agent:
-  reasoning_effort: gpt-5.3-codex-spark
+  # Valid values: xhigh/high/medium/low/minimal/none — a model id here is silently
+  # ignored (the model itself is set above under model.default).
+  reasoning_effort: high
   # 40 turns: successful specs finish in ~150-440s well under this; the 13 budget-exhaustion failures were 90-turn gather loops. Fail fast, re-queue with evidence inlined (kanban-orchestrator budget-trap procedure).
   # Wall-clock caps for dispatched workers are per-task max_runtime_seconds (item 10 scope) — agent.gateway_timeout only governs gateway chat-session inactivity, NOT kanban workers, so it is deliberately not set here.
   max_turns: 40
