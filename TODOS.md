@@ -8,7 +8,10 @@
 - **Fan-out test coverage** — `install.sh` §4a/§5 and `scripts/sync-doctrine.sh` are the only mechanisms distributing doctrine/configs to live profiles and have zero automated tests; a silent-skip regression would strand stale doctrine fleet-wide. Minimal test: run the fan-out against a temp HERMES_HOME with fake profiles and assert byte-identical copies + drift warning. **Priority:** P2
 
 ## agents
-- **Real wall-clock caps via per-task max_runtime_seconds** — `agent.gateway_timeout` is inert for dispatched kanban workers (it only governs gateway chat-session inactivity), which is why it is deliberately absent from the profile configs. Dispatcher-side per-profile `max_runtime_seconds` defaults are Item 10 scope. **Priority:** P2
-- **reasoning_effort values are model ids** (planner: `gpt-5.3-codex-spark`, researcher: `grok-4.3`) — likely falling back to a default tier. Verify Hermes semantics before changing; the codex/ChatGPT-account quirks documented in the config comments may make this deliberate. **Priority:** P3
+- **Real wall-clock caps via per-task max_runtime_seconds** — `agent.gateway_timeout` is inert for dispatched kanban workers (it only governs gateway chat-session inactivity), which is why it is deliberately absent from the profile configs. Kernel groundwork exists (`enforce_max_runtime` terminates over-cap workers, but only when the per-task value is set); per-profile defaults are Item 11 scope on the control-plane board. **Priority:** P2
+
+## telemetry
+- **Per-item cost rollup has no data source** — `show_cost` only affects chat display; board DBs persist zero cost/usage columns (verified against `task_runs` schema 2026-06-12). A rollup needs the kernel to stamp per-run usage into `task_runs.metadata` (or a usage table) at completion — file with a future kernel item, then build the report script here. **Priority:** P2
 
 ## Completed
+- **reasoning_effort values were model ids** (planner: `gpt-5.3-codex-spark`, researcher: `grok-4.3`) — verified against kernel semantics: the value feeds effort selection (`xhigh/high/medium/low/minimal/none`) and an unrecognized string is silently ignored, no codex quirk involved (the model ids were already correctly set as models elsewhere in each config). Fixed 2026-06-12: planner `high`, researcher `medium`, seeds + live profiles.

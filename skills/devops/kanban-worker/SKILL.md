@@ -1,7 +1,7 @@
 ---
 name: kanban-worker
 description: Pitfalls, examples, and edge cases for Hermes Kanban workers. The lifecycle itself is auto-injected into every worker's system prompt as KANBAN_GUIDANCE (from agent/prompt_builder.py); this skill is what you load when you want deeper detail on specific scenarios.
-version: 2.4.0
+version: 2.5.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -133,20 +133,26 @@ claims tests ran or passed, in any phrasing ("tests pass", "suite green",
    The file MUST contain the exact command line(s), the full unedited output,
    and the exit code line. The task-id suffix prevents collisions on shared
    `dir:` workspaces and stops a worker citing a stale log another card wrote.
-2. Cite the resolved absolute path in your completion summary (resolve the
-   variables — downstream readers run in different workspaces).
+2. Pass the resolved absolute path in the `artifacts` field of
+   `kanban_complete(artifacts=["/abs/path/to/test_run.<task>.log"])` AND cite
+   it in your completion summary (resolve the variables — downstream readers
+   run in different workspaces).
 3. Mirror a digest into a `kanban_comment` (last ~10 lines + the exit line):
    `scratch` workspaces are GC'd at archive, so the comment is the durable copy
    an auditor can still read after cleanup.
 
-A verification summary with no evidence artifact, a 0-byte artifact, or an
-artifact with no command/exit lines is unverified — the orchestrator must treat
-the claim as false until proven (kernel-side completion gating is item 10 T-F;
-until it lands, enforcement is the orchestrator's job, so make the evidence
-easy to audit). A hand-typed "1987 passed" summary file is fabrication, and the
-parent-commit re-run rule from Classify-and-file applies to auditing it. (This
-rule exists because the item 9 build shipped a 0-byte QA_VERDICT.md while the
-summary claimed a full pass.)
+**The kernel enforces this for QA and integrator profiles** (item 10 T-F,
+shipped): `kanban_complete` from a profile whose name contains `qa` or
+`integrator` is REJECTED unless `artifacts` lists at least one existing,
+non-empty file. Don't fight the gate — produce the tee'd log and pass its
+path. For reviewer and other cards the gate doesn't fire, but the doctrine is
+identical and the orchestrator audits: a verification summary with no evidence
+artifact, a 0-byte artifact, or an artifact with no command/exit lines is
+unverified and will be treated as false until proven. A hand-typed
+"1987 passed" summary file is fabrication, and the parent-commit re-run rule
+from Classify-and-file applies to auditing it. (This rule exists because the
+item 9 build shipped a 0-byte QA_VERDICT.md while the summary claimed a full
+pass.)
 
 ## Claiming cards you actually created
 
@@ -212,6 +218,26 @@ pre-card state, it is class 1: yours. No evidence, no class-2 claim.
 **Fix-card minimum payload:** failing test name(s), error excerpt (≤20
 lines), suspected file:line, the before/after evidence, link to this card.
 
+**Fix-card assignee rule — copy, never invent.** Assign fix cards ONLY to a
+profile name you copied verbatim from an existing card on this board
+(`kanban_list` and read the `assignee` column). Never invent, abbreviate, or
+"correct" a profile name — the dispatcher silently skips cards assigned to
+non-spawnable names; they sit open forever with zero runs and no error.
+Four real incidents of this across two builds: `devcrew-developer`,
+`devos-backend`, `devos-*` spec names, `events-worker` — all phantom, all
+silent.
+
+**Fix cards must gate the integrator.** If an integrator card exists
+downstream and is not yet done, your fix card has to land before integration
+or the item ships unfixed. You can't edit the integrator's parent set, so do
+the two things you can: (1) post a comment ON the integrator card naming your
+fix-card id ("fix card t_xxx must land before this integrates"), and (2) list
+the fix-card ids in your own completion via `created_cards` so the
+orchestrator sees them and expands the integrator's parents. (Verified
+failure: the item-10 build's QA filed two fix cards after the integrator had
+already promoted — the fixes ran but were never integrated until the operator
+hand-landed them.)
+
 **The only legitimate self-block from verification work:** a class-1 failure
 you cannot fix within your turn budget — block WITH the classification table
 and evidence attached. (The four genuine human-only concerns above —
@@ -227,6 +253,38 @@ issues they did not actually verify. The classify-and-file doctrine makes the
 worker do the verification work (the parent-commit re-run) and the
 classification is the receipt.
 
+## Integrator: sweep for open fix cards before completing
+
+If you are the integrator, your completion asserts "everything in this item is
+integrated" — so before `kanban_complete`, sweep the board: `kanban_list` and
+look for open (todo/ready/running/blocked) fix cards that reference your item
+or name your card in their body/comments, and read your own comment thread for
+"fix card t_xxx must land" notes from the gates. If any exist, do NOT
+complete. Comment which cards you're waiting on; if they're still running,
+that comment plus a heartbeat is enough — the orchestrator will re-dispatch
+you after they land. Completing past an open fix card ships the defect with a
+green board.
+
+## Kanban-on-kanban test isolation
+
+If your card's work involves creating kanban tasks AS TEST FIXTURES (stress
+tests, acceptance tests of kanban features themselves), never create them on
+the live board you were dispatched from. A live board is production state for
+every other profile — fixture cards trigger real dispatches to real workers
+and leak debris the operator has to archive by hand. Instead:
+
+- pytest fixtures: point the kanban DB at a temp path (`tmp_path`) — never
+  `~/.hermes/kanban`.
+- Live-process fixtures (CLI or tools): create a scratch board first
+  (`hermes kanban boards create test-$HERMES_KANBAN_TASK`) and pass
+  `--board test-$HERMES_KANBAN_TASK` on every fixture command; assign
+  fixtures to a non-dispatchable placeholder only on that scratch board.
+- Cleanup is part of the test: archive every fixture card (pass or fail)
+  before you complete.
+
+(The item-10 build's stress test ran 17 concurrent writer fixtures against the
+LIVE production board. It happened to survive — that is luck, not isolation.)
+
 ## Heartbeats worth sending
 
 Good heartbeats name progress: `"epoch 12/50, loss 0.31"`, `"scanned 1.2M/2.4M rows"`, `"uploaded 47/120 videos"`.
@@ -235,7 +293,16 @@ Bad heartbeats: `"still working"`, empty notes, sub-second intervals. Every few 
 
 ## Retry scenarios
 
-If you open the task and `kanban_show` returns `runs: [...]` with one or more closed runs, you're a retry. The prior runs' `outcome` / `summary` / `error` tell you what didn't work. Don't repeat that path. Typical retry diagnostics:
+If you open the task and `kanban_show` returns `runs: [...]` with one or more closed runs, you're a retry. The prior runs' `outcome` / `summary` / `error` tell you what didn't work. Don't repeat that path.
+
+**If the comment thread contains a `RETRY GUIDANCE` comment from the
+orchestrator, treat its inventory as ground truth.** It lists what the prior
+run already landed (git status/log of the workspace) and which acceptance
+criteria remain. Do not re-explore, re-read the whole codebase, or re-derive
+the plan — start from the DONE/REMAINING lists, finish only REMAINING, commit
+early. Re-exploring is what exhausted the previous run's budget.
+
+Typical retry diagnostics:
 
 - `outcome: "timed_out"` — two distinct causes; read the run's `error` string to tell them apart. (a) Wall-clock: the attempt hit `max_runtime_seconds` — chunk or shorten the work. (b) Iteration budget: `error` says "Iteration budget exhausted (N/N)" — the worker ran out of `max_turns`, not time; re-planning the same breadth will exhaust again, so narrow scope or inline the prior attempt's findings instead of re-gathering.
 - `outcome: "crashed"` — OOM or segfault. Reduce memory footprint.

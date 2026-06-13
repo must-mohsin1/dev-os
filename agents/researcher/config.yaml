@@ -10,7 +10,9 @@ model:
 toolsets:
   - hermes-cli
 agent:
-  reasoning_effort: grok-4.3
+  # Valid values: xhigh/high/medium/low/minimal/none — a model id here is silently
+  # ignored (grok-4.3 is the x_search model, set under x_search: below).
+  reasoning_effort: medium
   # 60 turns: research briefs complete well inside this (Item10 research ran under it).
   # Wall-clock caps for dispatched workers are per-task max_runtime_seconds (item 10 scope) — agent.gateway_timeout only governs gateway chat-session inactivity, NOT kanban workers, so it is deliberately not set here.
   max_turns: 60

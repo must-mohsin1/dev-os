@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.3] - 2026-06-13
+
+### Changed
+- kanban-orchestrator doctrine **v3.8.0 → v3.10.0**. New rules, every one earned from a real incident in the item-10/item-11 builds: **card budget-sizing** (size each card to ≤ ~2/3 of the assignee's `max_turns`; 4 of 7 item-10 cards exhausted their budget because they were sized to "one work item" not "one budget"), **sole-decomposer rule** (exactly one decomposition pass — yours; double-decompose produced an unapproved second task set), **same-tree parallelism rule** (cards sharing a `dir:` workspace must chain or use worktrees — the dispatcher spawns same-profile siblings in parallel, and item-11 put 4 workers in one kernel checkout), **idempotent re-decomposition** (reconcile, don't re-create, on decompose-card retry — a retry created two full graphs), **guided-retry procedure** (on budget exhaustion, post a `RETRY GUIDANCE` comment with a git-status inventory + DONE/REMAINING lists; 4/4 item-10 exhausted cards completed on first guided retry), and a **late-fix-card closeout step** (gate-filed fixes that land after the integrator promoted need a follow-up integration card).
+- kanban-worker doctrine **v2.4.0 → v2.5.0**: documents the shipped Item-10 T-F evidence gate (QA/integrator `kanban_complete` is kernel-rejected without `artifacts=[...]` pointing at existing non-empty files); adds the **fix-card assignee rule** (copy a real profile name verbatim, never invent — four phantom-assignee incidents across two builds), the **integrator sweep** (check for open fix cards before completing), **kanban-on-kanban test isolation** (fixtures use temp DBs / scratch boards, never the live board — an item-10 stress test ran 17 writers against production), and the **retry-guidance contract** (treat a `RETRY GUIDANCE` comment as ground truth; don't re-explore).
+- `agents/planner/config.yaml` and `agents/researcher/config.yaml`: `reasoning_effort` was set to model ids (`gpt-5.3-codex-spark`, `grok-4.3`) which the kernel silently ignores — an unrecognized string falls through to the default tier. Corrected to valid effort levels (planner `high`, researcher `medium`); the model ids were already correctly set elsewhere in each config.
+
+### Added
+- `scripts/sync-doctrine.sh`: a second fan-out stanza that converges `kanban-orchestrator` copies in **every** profile, not just `kanban-worker`. Nine orchestrator copies had drifted a full minor version in worker profiles because no installer owned them; the kernel repo's upstream-tracked bundled copies are deliberately excluded. Idempotent (verified: zero drift warnings on second run).
+
 ## [0.1.2] - 2026-06-12
 
 ### Fixed
