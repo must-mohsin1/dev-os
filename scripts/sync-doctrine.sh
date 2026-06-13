@@ -32,6 +32,16 @@ for pdir in "$HHOME"/profiles/*/; do
   sync_dir "$SRC_DIR/skills/devops/kanban-worker" "$pdir/skills/devops/kanban-worker"
 done
 
+# 2b) kanban-orchestrator copies in ANY profile (no fleet skip: the installers
+# fan out kanban-worker but nothing owned orchestrator copies that historical
+# installs left in worker profiles — 9 of them drifted a full minor version
+# before this stanza existed, 2026-06-12). The kernel repo's bundled
+# skills/devops/ pair is upstream-tracked and deliberately NOT touched.
+for pdir in "$HHOME"/profiles/*/; do
+  [ -f "$pdir/skills/devops/kanban-orchestrator/SKILL.md" ] || continue
+  sync_dir "$SRC_DIR/agents/devos/skills/kanban-orchestrator" "$pdir/skills/devops/kanban-orchestrator"
+done
+
 # 3) devos profile categorized duplicates (flat copies are installer-managed)
 if [ -d "$HHOME/profiles/devos" ]; then
   sync_dir "$SRC_DIR/agents/devos/skills/kanban-orchestrator" "$HHOME/profiles/devos/skills/devops/kanban-orchestrator"
