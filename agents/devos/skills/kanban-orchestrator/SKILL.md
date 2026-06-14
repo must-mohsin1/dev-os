@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.10.0
+version: 3.11.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -124,6 +124,21 @@ Budget arithmetic while sketching the graph:
   not slack to plan into.
 - Mega-card signals that always mean split: >5 acceptance criteria, >2 modules
   touched, "and" joining unrelated deliverables in the title.
+
+**Stamp a wall-clock cap on every card you create.** Pass
+`max_runtime_seconds` on `kanban_create` for each impl card — the kernel
+enforces a per-task `max_runtime_seconds` (it kills + re-queues an over-cap
+worker) but does NOT apply any per-profile default, so an unstamped card runs
+unbounded (this is how the 17.8h zombie happened). Stamp it explicitly so the
+cap lives in YOUR layer (doctrine), not the kernel: a kernel that gets
+overwritten on every `hermes update` can't carry the default, but a card you
+stamp at create-time always will. Evidence-based per-assignee caps:
+`devcrew-backend-dev`/`devcrew-integrator`/`devcrew-qa` **3600s**,
+`devcrew-reviewer` **2700s**, `devcrew-frontend-dev`/other devcrew **2700s**,
+`devos-researcher`/`devos-planner` **1800s**. These are ~2-3× the longest
+historically successful runs — generous, so proven work never hits the cap
+while a wedged worker still gets killed. Raise a specific card if its scope
+genuinely needs more; never leave it unset.
 
 Split by module or by criterion group, and make the interface explicit. When
 the halves need a shared contract (file paths, function signatures, data
