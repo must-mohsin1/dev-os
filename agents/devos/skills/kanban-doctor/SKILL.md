@@ -1,6 +1,6 @@
 ---
 name: kanban-doctor
-version: 1.2.0
+version: 1.3.0
 description: Diagnose and recover a stuck Hermes Kanban board. Use when user says "board not moving", "kanban stuck", "frozen", "stalled", "no progress", or "check the board". Detects the review-required self-block pattern (historically the #1 cause of stalls; rare after the v2.1.0 worker doctrine — remaining blocks are often genuine) and the non-spawnable-assignee pattern, classifies blocks as genuine-concern vs false-positive, escalates the genuine ones to the human, and recovers the false positives.
 ---
 
@@ -130,6 +130,39 @@ Post a short status to the user with:
 - Tasks reassigned + spawned (with new profile) — Pattern 2
 - Current `stats` snapshot
 - What spawned next
+
+## Pattern 5: stale-lock / immortal claim (operator backstop)
+
+A card stuck `running` for far longer than any real task should (hours), whose
+worker is alive but making no progress — a claim the kernel's own stale
+detection should reclaim but sometimes doesn't (a heartbeating-but-wedged
+worker can survive the configured timeout; one such claim ran **17.8 hours**
+overnight). The kernel's stale handling is upstream's and evolves; this is the
+operator backstop that does NOT depend on any kernel patch (so it survives
+`hermes update`).
+
+Detect:
+```bash
+HERMES_KANBAN_BOARD=<board> hermes kanban list | grep -E "running|●"
+# For each long-running card, read its run age + heartbeat:
+HERMES_KANBAN_BOARD=<board> hermes kanban runs <task_id>   # ELAPSED column
+HERMES_KANBAN_BOARD=<board> hermes kanban show <task_id> | sed -n '/Latest summary/,+3p'
+```
+A card is a stale-lock suspect when ALL hold: run ELAPSED far exceeds the
+card's `max_runtime_seconds` (or, if unstamped, exceeds ~2× the longest
+plausible run for that assignee); the `Latest summary` is byte-identical across
+two `show` calls minutes apart; and `done` count on the board isn't moving.
+
+Recover:
+```bash
+HERMES_KANBAN_BOARD=<board> hermes kanban reclaim <task_id>   # abort the wedged worker, reset to ready
+HERMES_KANBAN_BOARD=<board> hermes kanban dispatch            # re-spawn fresh
+```
+If the work was actually done (code in the tree, tests pass) but the worker
+just couldn't close, force-complete with evidence instead of reclaiming (see
+Pattern 1). Prevention is the orchestrator's `max_runtime_seconds` stamp
+(kanban-orchestrator v3.11.0) — a stamped card gets killed by the kernel at the
+cap; this scan catches the ones that slipped through unstamped or pre-cap.
 
 ## Pitfalls
 
