@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.11.0
+version: 3.12.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -394,6 +394,50 @@ hermes kanban create "Item-N-research: <topic>" --assignee devos-researcher \
 What the worker sees: `kanban-worker` (lifecycle, auto-injected) + `kanban-research-tasks` (the `--skill` flag) + the body. Use this whenever a card body is too short to embed the right framing on its own, or when a research/planning task needs a domain primer that would be noise in a code-work body. Note: the new skill must be **registered** in the profile's skill manifest — pass `--skill foo` for a skill that has YAML errors (e.g., unquoted colons in description) returns `Unknown skill(s): foo` and the worker spawn fails. Validate the skill first via `hermes -p <profile> skills list | grep <name>`.
 
 **Per-task `skills:` is different from the profile's `skills.external_dirs` config.** The profile config sets the *search path* for skill discovery (which directories are scanned). The per-task `--skill` flag sets the *force-loaded set* for that one card. They compose: the skill must be in a discovered directory AND explicitly named in `--skill` to be force-loaded. Don't expect `--skill foo` to work for a skill that lives outside the profile's `external_dirs` and the default `~/.hermes/skills/` tree.
+
+## Release-trust wiring (E3) — assignee gate + spec-verify card
+
+Two mechanical release-trust steps the orchestrator owns. They are *different
+checks* — no overlap with each other or with the worker's pre-completion gate.
+
+**1. Validate every assignee before you create cards (decompose-time gate).**
+Step 0 discovery and Step 2 mapping are the human-judgment layer; this is the
+mechanical backstop. After the graph is sketched and sized, confirm every assignee
+is actually spawnable BEFORE creating a single card — a card on a phantom profile
+sits in `ready` forever, silently (four real incidents).
+- Native check (always available): `hermes kanban assignees` (the active worker
+  pool) + `hermes profile list`; every assignee in your graph must appear.
+- Harness check (where `release_harness` is installed, e.g. the devcrew env):
+  `python3 -m release_harness.spec_claim_verify assignees <graph.json>` — exit 1
+  lists every phantom assignee; exit 2 → escalate, do not proceed.
+
+Any phantom → fix the assignee (or ask the user) before creating cards. This is the
+proactive form of the "non-spawnable assignee is silent" pitfall below.
+
+**2. Insert a `spec-verify` card as the parent of the human-approve gate.**
+Before the human approves the plan, the release-manager checks the spec for false
+premises (the Item-13 "route is missing when it actually exists → dead code" class).
+Create a `spec-verify` card assigned to `devcrew-integrator` (the release-manager
+role) and make the approve/gate card depend on it, so the gate can't promote until
+the spec check has run and its report is posted:
+
+```python
+sv = hermes kanban create "Item-N-spec-verify: grep-check the plan's 'missing'/file claims" \
+  --assignee devcrew-integrator --parent <plan_card_id>
+hermes kanban create "Item-N-approve: human gate" --assignee devos \
+  --parent <sv_id> --initial-status blocked
+```
+
+The release-manager runs `python3 -m release_harness.spec_claim_verify plan <spec>
+<repo>`, posts the report as a comment + artifact, and surfaces any
+`refuted-missing-claim` as a *candidate* — fail-open, it never hard-blocks; the human
+decides with the report in hand. See the `release-management` skill
+(`devcrew-integrator`) for the full playbook.
+
+**Dedup (Reviewer Concern §6):** the assignee check (step 1, decompose-time) and the
+spec-verify card (step 2, prose check at the gate) are distinct — one validates the
+graph's assignees, the other validates the spec's factual claims. Running both is not
+duplication.
 
 ## Build-watching (4-min polls, stuck-worker detection, force-complete)
 

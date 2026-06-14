@@ -1,7 +1,7 @@
 ---
 name: kanban-worker
 description: Pitfalls, examples, and edge cases for Hermes Kanban workers. The lifecycle itself is auto-injected into every worker's system prompt as KANBAN_GUIDANCE (from agent/prompt_builder.py); this skill is what you load when you want deeper detail on specific scenarios.
-version: 2.5.0
+version: 2.6.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -153,6 +153,27 @@ unverified and will be treated as false until proven. A hand-typed
 from Classify-and-file applies to auditing it. (This rule exists because the
 item 9 build shipped a 0-byte QA_VERDICT.md while the summary claimed a full
 pass.)
+
+## Pre-completion hygiene (impl workers producing a branch/PR)
+
+If your card produced code on a branch that will become a PR, run the release-harness
+hygiene gate on your workspace BEFORE `kanban_complete` — it is the source-level stop
+for the "git add -A pushed 18 debris files into a merged PR" class:
+
+```bash
+python3 -m release_harness.pr_hygiene_gate "$HERMES_KANBAN_WORKSPACE" \
+  --base origin/main --evidence "$HERMES_KANBAN_WORKSPACE/test_run.$HERMES_KANBAN_TASK.log"
+```
+
+- exit 0 → clean; proceed to complete.
+- exit 1 → a tracked-but-gitignored debris file, a missing/empty evidence log, or a
+  stale base. Fix it (untrack the debris, attach the real test log, rebase) before
+  completing — do not ship the debris.
+- exit 2 → the gate could not run; escalate via `kanban_block`, never treat as pass.
+
+(Where `release_harness` isn't on the path, the principle still holds: no
+gitignored/debris paths tracked in your branch, and a real tee'd evidence log per the
+evidence-artifact rule above.)
 
 ## Claiming cards you actually created
 
