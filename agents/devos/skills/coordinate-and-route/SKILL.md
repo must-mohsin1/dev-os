@@ -35,3 +35,20 @@ Use when a goal arrives. You orchestrate; you do **not** do the work yourself.
 
 ## Done when
 The goal's result is reported, or it's blocked with a specific question to the human.
+
+### Headroom + Agentmemory beta routing (approved 2026-06-20)
+
+When the goal involves Headroom (provenance/retrieval) or Agentmemory
+(persistent MCP memory), route to specific beta-enabled workers:
+
+| Task type | Route to |
+|-----------|----------|
+| Mixed (Headroom + Agentmemory) | `devcrew-reviewer` or `devcrew-domain-expert` |
+| Headroom-only | `devcrew-headroom-beta`, `devcrew-reviewer`, or `devcrew-domain-expert` |
+| Agentmemory-only QA | `devcrew-qa` |
+| General (no beta tools) | `devcrew` (standard pipeline) |
+
+DevOS agents (`devos`, `devos-researcher`, `devos-planner`) stay clean — they
+orchestrate and specify, never execute beta-tool work. See the
+`kanban-orchestrator` skill for the full routing table, safety limits, and
+gate shapes.

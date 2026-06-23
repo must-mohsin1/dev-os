@@ -1,7 +1,7 @@
 ---
 name: kanban-orchestrator
 description: Decomposition playbook + anti-temptation rules for an orchestrator profile routing work through Kanban. The "don't do the work yourself" rule and the basic lifecycle are auto-injected into every kanban worker's system prompt; this skill is the deeper playbook when you're specifically playing the orchestrator role.
-version: 3.12.0
+version: 3.13.0
 platforms: [linux, macos, windows]
 environments: [kanban]
 metadata:
@@ -752,3 +752,76 @@ A gate card whose spec exists only under /tmp is not approvable — the operator
 may be reading a path that a reboot already deleted. The same applies to
 research briefs you inline into re-queued planner cards: cite the durable copy,
 not the /tmp original.
+
+## Headroom + Agentmemory beta routing rules (approved 2026-06-20)
+
+Headroom (provenance/retrieval tool at 127.0.0.1:8787) and Agentmemory
+(persistent MCP memory) are in beta on specific worker profiles only. Use
+these routing rules when decomposing a goal that may exercise one or both.
+
+### Current beta workers
+
+| Beta | Workers |
+|------|---------|
+| **Headroom only** | `devcrew-headroom-beta` |
+| **Headroom + Agentmemory** | `devcrew-reviewer`, `devcrew-domain-expert` |
+| **Agentmemory only** | `devcrew-qa` |
+
+### Routing rules (by task type)
+
+- **Mixed (needs Headroom AND Agentmemory):** route to `devcrew-reviewer` or
+  `devcrew-domain-expert`. Require exactly one Agentmemory recall/search per
+  task unless the task explicitly needs more. Keep total Agentmemory family
+  calls <= 3. Require exactly one Headroom retrieve on a fresh unique hash.
+  Final answer must cite both sources.
+
+- **Headroom-only (provenance / retrieval task):** route to
+  `devcrew-headroom-beta`, `devcrew-reviewer`, or `devcrew-domain-expert`.
+  Generate fresh unique markers immediately before retrieval; retrieve
+  immediately after compression. Treat 404 as stale evidence, not a
+  regression. Use fresh unique content for gates — deterministic old hashes
+  may be evicted.
+
+- **Agentmemory-only QA (quality assessment using persistent memory):** route
+  to `devcrew-qa`. Respect the family budget limit of 3 Agentmemory calls per
+  task.
+
+- **DevOS agents stay clean.** The coordinator (`devos`), researcher
+  (`devos-researcher`), and planner (`devos-planner`) profiles must NOT be
+  given Headroom or Agentmemory tools. They orchestrate and specify; they do
+  not execute beta-tool work.
+
+### Safety and rollout limits
+
+- Do not enable Headroom fleet-wide.
+- Do not promote a fourth Headroom worker without a new gate cycle.
+- Keep Headroom bound to 127.0.0.1:8787 only — no external bind.
+- Keep telemetry off.
+- Preserve Agentmemory family budget limit=3 on workers that have Agentmemory.
+- Keep backups before any profile config changes.
+- The standard gate shape for any next worker: promotion card → real Headroom
+  gate → mixed Agentmemory+Headroom QA gate (if the worker also has
+  Agentmemory) → final keep/rollback decision.
+
+### Mixed workflow prompt template
+
+When a workflow task must exercise both Headroom and Agentmemory:
+
+```text
+Run a mixed Agentmemory + Headroom evidence task.
+
+1. Call mcp_agentmemory_memory_smart_search exactly once with query:
+   "Headroom mixed gate rule".
+2. Call headroom_retrieve(hash="<fresh_hash>") exactly once.
+3. Use both sources in the final answer:
+   - cite the Agentmemory criteria you found
+   - cite what the Headroom original_content contains
+4. Keep Agentmemory family calls <= 3.
+5. If Headroom returns 404, say the hash is stale and request/regenerate a
+   fresh hash; do not infer content.
+```
+
+See the full integration outcome at
+`/Users/mustcompanymohsin/projects/mustCompany/must-dev-agents/headroom-agentmemory-workflow-integration-final-2026-06-20.md`
+for the complete gate evidence, runtime verification snapshot, and
+per-worker gate reports.
